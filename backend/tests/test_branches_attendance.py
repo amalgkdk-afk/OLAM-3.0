@@ -47,7 +47,7 @@ class TestBranchEdit:
         assert "br-2" not in pub
         r = requests.post(f"{API}/registrations", json={
             "full_name": "TEST Inactive", "student_code": "TEST_" + uuid.uuid4().hex[:8], "mobile": "9876543210",
-            "email": "delivered@resend.dev", "branch_id": "br-2", "batch": "TEST_Batch", "confirm": True}, timeout=30)
+            "email": "delivered@resend.dev", "branch_id": "br-2", "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True}, timeout=30)
         assert r.status_code == 400, r.text
         assert _patch(admin, "br-2", "ELAMAKKARA", True).status_code == 200
         pub = [b["id"] for b in requests.get(f"{API}/public/branches", timeout=30).json()]

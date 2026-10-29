@@ -86,7 +86,7 @@ export function H2({ children }: { children: React.ReactNode }) {
   return <Text style={styles.h2}>{children}</Text>;
 }
 export function Eyebrow({ children }: { children: React.ReactNode }) {
-  return <Text style={styles.eyebrow}>{children}</Text>;
+  return <Text style={styles.eyebrow} numberOfLines={1}>{children}</Text>;
 }
 
 const styles = StyleSheet.create({

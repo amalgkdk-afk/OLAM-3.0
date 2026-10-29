@@ -8,12 +8,14 @@ import { QRPassCard } from "@/src/components/qr-pass";
 import { GoldButton } from "@/src/components/ui";
 import { savePassPdf } from "@/src/utils/print-pass";
 import { BgScreen } from "@/src/components/bg-screen";
+import { storage } from "@/src/utils/storage";
 
 export default function PassScreen() {
-  const { t } = useLocalSearchParams<{ t: string; ref: string }>();
+  const { ref } = useLocalSearchParams<{ ref: string }>();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [data, setData] = useState<any>(null);
+  const [t, setT] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -21,11 +23,15 @@ export default function PassScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await api<any>(`/pass/verify/${encodeURIComponent(String(t))}`);
+        // Token is kept on this device only (never in the URL).
+        const tok = await storage.getItem(`pass_${String(ref).replace(/[^A-Za-z0-9-]/g, "")}`, "");
+        if (!tok) { setErr("Please open your pass from the My Registration page (reference + email)."); return; }
+        const r = await api<any>("/pass/verify", { method: "POST", body: JSON.stringify({ token: tok }) });
+        setT(String(tok));
         setData(r.registration);
       } catch (e: any) { setErr(e.message); }
     })();
-  }, [t]);
+  }, [ref]);
 
   return (
     <BgScreen>

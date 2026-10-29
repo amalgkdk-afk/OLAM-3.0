@@ -1,0 +1,52 @@
+{
+  "summary": "Verified iteration-4 follow-ups. All 4 backend suites pass (43/43) after I fixed stale test scripts: test_followup_fixes.py (new) 5/5, test_olam_api.py 20/20, test_csv_export_control.py 9/9, test_security_fixes.py 9/9. UI checks pass: 375px coordinator header with a long name truncates with an ellipsis and both 'Password' and 'Sign out' are fully visible (44px tall); QA admin lands on the dashboard; the owner is forced to /staff/change-password, even when opening /staff/dashboard directly; scanner manual check shows VALID and then ALREADY CHECKED IN. CRITICAL FINDING: header spoofing is blocked, but only because _client_ip takes the LAST X-Forwarded-For entry, which is the shared Google load balancer IP (34.111.104.211) for every client. As a result every IP-based limit and the login lockout is shared by all users, and the lockout-abuse fix does not work in this environment.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "_client_ip (server.py:127-135), affects /api/auth/login, /api/registrations, /api/registrations/lookup, /api/pass/verify", "issue": "Ingress sends no X-Real-IP (any client-sent X-Real-IP is stripped). Observed X-Forwarded-For: '<client-supplied>,35.193.209.116(real client),172.70.x.x/108.162.x.x(Cloudflare edge, varies per request),34.111.104.211(Google LB, constant)'. xff[-1] is therefore the same LB IP for every user, so all rate-limit buckets are global: registrations 10/min, lookup 15/min and verify 30/min across ALL students, and login 20/min across all staff. The (email+IP) lockout reduces to per-email, so anyone anywhere can lock the owner out with 5 wrong passwords. Lockout-abuse fix NOT effective. Spoof resistance holds, but only because every client collapses into one bucket.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "/api/auth/login", "issue": "The per-email failure list (_login_fails[email]) is not cleared on a successful login, and the in-memory dicts _rl_hits/_login_fails grow without bound (stale keys are never removed)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "staff/dashboard (375px)", "issues": ["The 'OLAM 3.0 • COORDINATOR' eyebrow wraps onto 2 lines when the header actions are present (cosmetic)", "The 'Password' / 'Sign out' text is light grey on white, which is borderline contrast"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_followup_fixes.py",
+    "/app/backend/tests/test_olam_api.py",
+    "/app/backend/tests/test_csv_export_control.py",
+    "/app/backend/tests/test_security_fixes.py",
+    "/app/backend/tests/setup_iter5_ui.py",
+    "/app/test_reports/pytest/iter5_followup.xml",
+    "/app/test_reports/pytest/iter5_olam_api.xml",
+    "/app/test_reports/pytest/iter5_csv.xml",
+    "/app/test_reports/pytest/iter5_sec.xml"
+  ],
+  "action_items": [
+    "HIGH: Fix _client_ip so it picks the real client and not the shared Google LB IP. In this preview the real client is xff[-3] (client, Cloudflare edge, Google LB). Make the number of trusted proxy hops configurable, e.g. TRUSTED_PROXY_HOPS=2 -> ip = xff[-(hops+1)] when len(xff) > hops, else xff[0]. Do NOT trust left-most entries or a client-sent X-Real-IP. Production topology may differ: log the X-Forwarded-For seen in production once and confirm the hop count.",
+    "After the fix, re-run test_followup_fixes.py. Spoofed XFF/X-Real-IP must still give 429 by request 16, and two different real IPs must get independent buckets.",
+    "Optional: remove stale keys from _rl_hits/_login_fails periodically (memory growth)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:127-135 _client_ip: the comment says 'ingress appends the real client address', but the last hop appended is the GCP load balancer, not the client. X-Real-IP is never present.",
+    "server.py:434: the 30-per-email ceiling is a reasonable trade-off once IPs are correct (an attacker needs about 6 real IPs to lock an account for 15 min)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_followup_fixes.py (new)",
+    "/app/backend/tests/setup_iter5_ui.py (new)",
+    "/app/backend/tests/test_olam_api.py (staff fixture now changes password per SEC-001; GET /pass/verify/{tok} -> POST /pass/verify body; waits out a 429 once on public register/lookup)",
+    "/app/backend/tests/test_csv_export_control.py (users fixture changes password; CSV header assertion handles quoted header)",
+    "/app/backend/tests/test_security_fixes.py (lockout message assertion updated to 'Too many failed sign-ins')"
+  ],
+  "success_rate": {"backend": "100% (43/43 after test-script fixes; client-IP design issue reported separately)", "frontend": "100% of requested UI checks"},
+  "seed_data_creation": "Created TEST_ coordinator/scanner/registrations; all removed by cleanup_test_data.py (regs 21, users 24). Kept OLM-8932B1, OLM-E9C76C, OLM-72857B, OLM-E04B9A, qa-admin, owner. Owner password untouched. Backend restarted at the end to reset in-memory limits.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "pytest.ini forces -n 2 (use -n 0 for serial). Rate limits are in-memory, so restart the backend between suites. test_olam_api.py waits out the 10/min registration limit once (~72s). To simulate distinct client IPs, call http://localhost:8001/api directly with an X-Real-IP header (no ingress in front). To inspect real headers, temporarily print request.headers in _client_ip and revert.",
+  "rca_of_issue": "Repro: temporarily logged headers in _client_ip and sent requests through the external URL. x-real-ip=None even when the client sent one. x-forwarded-for='5.6.7.8(spoof),35.193.209.116,172.70.126.106,34.111.104.211' and on the next request '35.193.209.116,108.162.216.201,34.111.104.211'. The last entry is constant (the GCP LB), so every client maps to the same key. Mitigation: index from the right, skipping the trusted proxy hops (2 here)."
+}

@@ -7,7 +7,7 @@ import { colors, fonts, radius, spacing } from "@/src/theme";
 import { Card, GoldButton, Pill, Eyebrow, TextInputPill, Field } from "@/src/components/ui";
 import { BranchRow } from "@/src/components/branch-row";
 
-type Reg = { id: string; reference: string; full_name: string; student_code: string; mobile: string; email: string; branch_name: string; branch_id: string; batch: string; status: "pending" | "approved" | "rejected"; rejection_reason?: string; checked_in: boolean; checked_in_at?: string; reviewed_by_name?: string };
+type Reg = { id: string; reference: string; full_name: string; student_code: string; mobile: string; email: string; branch_name: string; branch_id: string; batch: string; batch_no?: string; faculty_name?: string; status: "pending" | "approved" | "rejected"; rejection_reason?: string; checked_in: boolean; checked_in_at?: string; reviewed_by_name?: string };
 type Stats = { total: number; pending: number; approved: number; rejected: number; checked_in: number; not_checked_in: number; attendance_pct: number; by_branch: { branch: string; total: number; approved: number; checked_in: number }[] };
 
 export default function Dashboard() {
@@ -94,13 +94,18 @@ export default function Dashboard() {
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
-        <View>
-          <Eyebrow>OLAM 3.0 • {user.role === "super_admin" ? "ADMIN" : "COORDINATOR"}</Eyebrow>
-          <Text style={styles.hello}>Hi, {user.name || user.email}</Text>
+        <View style={{ flex: 1, minWidth: 0, marginRight: spacing.sm }}>
+          <Eyebrow>{`OLAM 3.0 • ${user.role === "super_admin" ? "ADMIN" : "COORDINATOR"}`}</Eyebrow>
+          <Text style={styles.hello} numberOfLines={1}>Hi, {user.name || user.email}</Text>
         </View>
-        <Pressable testID="dashboard-logout-btn" onPress={async () => { await clearSession(); router.replace("/staff/login"); }} style={{ minHeight: 44, minWidth: 64, justifyContent: "center", alignItems: "flex-end" }}>
-          <Text style={styles.logout}>Sign out</Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md, flexShrink: 0 }}>
+          <Pressable testID="dashboard-change-password-btn" onPress={() => router.push("/staff/change-password")} style={{ minHeight: 44, justifyContent: "center" }}>
+            <Text style={styles.logout}>Password</Text>
+          </Pressable>
+          <Pressable testID="dashboard-logout-btn" onPress={async () => { await clearSession(); router.replace("/staff/login"); }} style={{ minHeight: 44, minWidth: 64, justifyContent: "center", alignItems: "flex-end" }}>
+            <Text style={styles.logout}>Sign out</Text>
+          </Pressable>
+        </View>
       </View>
 
       {/* Tabs */}
@@ -174,6 +179,7 @@ export default function Dashboard() {
                 </View>
                 <Text style={styles.regMeta}>{r.reference} • {r.branch_name} • {r.batch}</Text>
                 <Text style={styles.regMeta}>{r.student_code} • {r.mobile} • {r.email}</Text>
+                {r.batch_no || r.faculty_name ? <Text style={styles.regMeta}>Batch No. {r.batch_no || "—"} • Faculty: {r.faculty_name || "—"}</Text> : null}
                 {r.checked_in ? <Text style={[styles.regMeta, { color: colors.success }]}>Checked in {new Date(r.checked_in_at!).toLocaleString()}</Text> : null}
                 {r.rejection_reason ? <Text style={[styles.regMeta, { color: colors.error }]}>Reason: {r.rejection_reason}</Text> : null}
                 {(r.status !== "approved" || user.role === "super_admin") && (

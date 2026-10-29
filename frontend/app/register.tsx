@@ -15,7 +15,7 @@ export default function Register() {
   const insets = useSafeAreaInsets();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
-  const [form, setForm] = useState({ full_name: "", student_code: "", mobile: "", email: "", branch_id: "", batch: "", confirm: false });
+  const [form, setForm] = useState({ full_name: "", student_code: "", mobile: "", email: "", branch_id: "", batch: "", batch_no: "", faculty_name: "", confirm: false });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,12 +32,14 @@ export default function Register() {
     })();
   }, []);
 
-  const set = (k: string, v: any) => setForm({ ...form, [k]: v });
+  const set = (k: string, v: any) => setForm((f) => ({ ...f, [k]: v }));
 
   async function submit() {
     setError(null);
-    if (!form.full_name || !form.student_code || !form.mobile || !form.email || !form.branch_id || !form.batch) {
-      setError("Please complete all fields.");
+    const labels: Record<string, string> = { full_name: "Full Name", student_code: "Student ID", mobile: "Mobile Number", email: "Email", branch_id: "Branch", batch: "Batch", batch_no: "Batch No.", faculty_name: "Faculty Name" };
+    const missing = Object.keys(labels).filter((k) => !String((form as any)[k] ?? "").trim());
+    if (missing.length) {
+      setError(`Please fill in: ${missing.map((k) => labels[k]).join(", ")}.`);
       return;
     }
     if (!form.confirm) { setError("Please confirm your information is accurate."); return; }
@@ -90,15 +92,21 @@ export default function Register() {
               ))}
             </View>
           </Field>
+          <Field label="Batch No.">
+            <TextInputPill testID="register-batchno-input" value={form.batch_no} onChangeText={(v) => set("batch_no", v)} placeholder="Enter your batch number" autoCapitalize="characters" />
+          </Field>
+          <Field label="Faculty Name">
+            <TextInputPill testID="register-faculty-input" value={form.faculty_name} onChangeText={(v) => set("faculty_name", v)} placeholder="Enter your faculty's name" autoCapitalize="words" />
+          </Field>
           <Pressable testID="register-confirm-check" onPress={() => { set("confirm", !form.confirm); setError(null); }} style={styles.confirmRow}>
             <View style={[styles.cb, form.confirm && styles.cbOn]}>{form.confirm ? <Text style={{ color: colors.onBrandPrimary, fontWeight: "900" }}>✓</Text> : null}</View>
             <Text style={styles.confirmTxt}>I confirm the information I have provided is accurate and I am a current Delta Academy student.</Text>
           </Pressable>
-          {error ? <Text style={styles.err} testID="register-error">{error}</Text> : null}
         </View>
         </View>
       </ScrollView>
       <View style={[styles.ctaBar, { paddingBottom: insets.bottom + spacing.md }]}>
+        {error ? <Text style={styles.ctaErr} testID="register-error">{error}</Text> : null}
         <GoldButton testID="register-submit-btn" label={submitting ? "Submitting..." : "Submit Registration"} onPress={submit} loading={submitting} />
       </View>
     </KeyboardAvoidingView>
@@ -120,5 +128,6 @@ const styles = StyleSheet.create({
   cbOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   confirmTxt: { color: colors.onSurface, flex: 1, fontSize: 13, lineHeight: 19, fontFamily: fonts.text },
   err: { color: colors.error, marginTop: spacing.md, fontFamily: fonts.textMed, fontSize: 13 },
+  ctaErr: { color: "#FFFFFF", backgroundColor: colors.error, borderRadius: radius.md, overflow: "hidden", paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.md, fontFamily: fonts.textMed, fontSize: 13, textAlign: "center" },
   ctaBar: { position: "absolute", left: 0, right: 0, bottom: 0, padding: spacing.lg, backgroundColor: "rgba(0,0,0,0.85)", borderTopWidth: 1, borderTopColor: "rgba(212,175,55,0.5)" },
 });

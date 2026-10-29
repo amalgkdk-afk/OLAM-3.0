@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
@@ -6,7 +7,7 @@ const KEY = "olam3_token";
 const USER_KEY = "olam3_user";
 
 export type Role = "super_admin" | "coordinator" | "scanner" | "student";
-export type AuthUser = { id: string; email: string; role: Role; name?: string; branch_id?: string | null; can_export?: boolean };
+export type AuthUser = { id: string; email: string; role: Role; name?: string; branch_id?: string | null; can_export?: boolean; must_change_password?: boolean };
 
 const API = process.env.EXPO_PUBLIC_BACKEND_URL as string;
 
@@ -52,6 +53,7 @@ export async function api<T = any>(path: string, init: RequestInit = {}): Promis
   try { data = text ? JSON.parse(text) : null; } catch { data = text; }
   if (!r.ok) {
     const msg = typeof data === "object" && data?.detail ? data.detail : (typeof data === "string" ? data : `HTTP ${r.status}`);
+    if (r.status === 403 && msg === "Password change required") router.replace("/staff/change-password");
     throw new Error(typeof msg === "string" ? msg : "Request failed");
   }
   return data as T;

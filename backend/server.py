@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 import re
 import asyncio
+import base64
+import html as htmllib
 import csv
 import io
 import hmac
@@ -110,6 +112,51 @@ def _hash_pass_token(tok: str) -> str:
     return hmac.new(JWT_SECRET.encode(), tok.encode(), hashlib.sha256).hexdigest()
 
 
+def _derive_pass_token(registration_id: str, version: int) -> str:
+    """Pass token is derived (never stored): HMAC(secret, reg_id:version).
+    Revocation/re-issue bumps `version`; DB stores only the hash."""
+    mac = hmac.new(("pass-v1:" + JWT_SECRET).encode(), f"{registration_id}:{version}".encode(), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(mac[:24]).decode().rstrip("=")
+
+
+# --- simple in-memory rate limiting (single backend instance) --------------
+_rl_hits: dict = {}
+_login_fails: dict = {}
+
+
+TRUSTED_PROXY_HOPS = int(os.getenv("TRUSTED_PROXY_HOPS", "2"))
+
+
+def _client_ip(request: Request) -> str:
+    # Our edge appends: <real client>, <CDN edge>, <load balancer>. Entries to the
+    # left of the real client are caller-controlled, so count from the right.
+    xff = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
+    if len(xff) > TRUSTED_PROXY_HOPS:
+        return xff[-(TRUSTED_PROXY_HOPS + 1)]
+    if xff:
+        return xff[0]
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_limit(bucket: str, key: str, limit: int, window_s: int):
+    now = datetime.now(timezone.utc).timestamp()
+    k = f"{bucket}:{key}"
+    hits = [t for t in _rl_hits.get(k, []) if now - t < window_s]
+    if len(hits) >= limit:
+        raise HTTPException(429, "Too many attempts. Please wait a minute and try again.")
+    hits.append(now)
+    _rl_hits[k] = hits
+
+
+def _password_ok(pw: str) -> bool:
+    return len(pw) >= 10 and re.search(r"[A-Za-z]", pw) is not None and re.search(r"\d", pw) is not None
+
+
+def _csv_safe(v) -> str:
+    s = "" if v is None else str(v)
+    return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
+
+
 def _ref_code() -> str:
     # Public registration reference, e.g. OLM-7F3K2A
     return "OLM-" + pysecrets.token_hex(3).upper()
@@ -131,6 +178,7 @@ class UserOut(BaseModel):
     branch_id: Optional[str] = None
     active: bool = True
     can_export: bool = False
+    must_change_password: bool = False
 
 
 class TokenOut(BaseModel):
@@ -197,9 +245,20 @@ class RegistrationIn(BaseModel):
     student_code: str = Field(min_length=2, max_length=40)
     mobile: str = Field(min_length=5, max_length=20)
     email: EmailStr
-    branch_id: str
+    branch_id: str = Field(min_length=1)
     batch: str = Field(min_length=1, max_length=80)
+    batch_no: str = Field(min_length=1, max_length=30)
+    faculty_name: str = Field(min_length=2, max_length=120)
     confirm: bool
+
+    @field_validator("full_name", "student_code", "mobile", "branch_id", "batch", "batch_no", "faculty_name")
+    @classmethod
+    def _required_text(cls, v, info):
+        v = v.strip()
+        mins = {"full_name": 2, "student_code": 2, "mobile": 5, "faculty_name": 2}
+        if len(v) < mins.get(info.field_name, 1):
+            raise ValueError("This field is required" if not v else "This field is too short")
+        return v
 
     @field_validator("confirm")
     @classmethod
@@ -218,6 +277,8 @@ class RegistrationOut(BaseModel):
     email: EmailStr
     branch_id: str
     branch_name: Optional[str] = None
+    batch_no: Optional[str] = None
+    faculty_name: Optional[str] = None
     batch: str
     status: RegStatus
     rejection_reason: Optional[str] = None
@@ -246,6 +307,7 @@ class ScanIn(BaseModel):
 # Auth dependencies
 # ---------------------------------------------------------------------------
 async def current_user(
+    request: Request,
     creds: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer)],
 ) -> dict:
     if not creds or creds.scheme.lower() != "bearer":
@@ -263,6 +325,9 @@ async def current_user(
     user = await db.users.find_one({"id": p["sub"]}, {"_id": 0, "password_hash": 0})
     if not user or not user.get("active", True) or user.get("role") != p["role"]:
         raise HTTPException(401, "Invalid token")
+    # Accounts with a default / admin-set password may only change it until they do.
+    if user.get("must_change_password") and request.url.path not in ("/api/auth/me", "/api/auth/change-password"):
+        raise HTTPException(403, "Password change required")
     return user
 
 
@@ -325,10 +390,26 @@ async def startup():
                 "branch_id": None,
                 "password_hash": _hash_password(admin_pw),
                 "active": True,
+                "must_change_password": True,
                 "created_at": datetime.now(timezone.utc),
             }
         )
         logger.info("Seeded super admin: %s", admin_email)
+    # If the seeded admin still uses the bootstrap password, force a change.
+    if admin_email and admin_pw:
+        adm = await db.users.find_one({"email": admin_email})
+        if adm and not adm.get("must_change_password") and _verify_password(admin_pw, adm["password_hash"]):
+            await db.users.update_one({"id": adm["id"]}, {"$set": {"must_change_password": True}})
+
+    # Migrate legacy passes: drop stored plain tokens, switch to derived tokens.
+    async for p in db.passes.find({"$or": [{"plain_token": {"$exists": True}}, {"version": {"$exists": False}}]}):
+        ver = int(p.get("version") or 1)
+        await db.passes.update_one(
+            {"_id": p["_id"]},
+            {"$set": {"version": ver, "token_hash": _hash_pass_token(_derive_pass_token(p["registration_id"], ver))},
+             "$unset": {"plain_token": ""}},
+        )
+    await db.scan_attempts.create_index("attempted_at")
 
 
 @app.on_event("shutdown")
@@ -356,11 +437,28 @@ async def audit(actor_id: Optional[str], action: str, target: Optional[str] = No
 # AUTH
 # ---------------------------------------------------------------------------
 @api.post("/auth/login", response_model=TokenOut)
-async def login(body: LoginIn):
+async def login(body: LoginIn, request: Request):
     email = body.email.lower().strip()
+    ip = _client_ip(request)
+    _rate_limit("login-ip", ip, 20, 60)
+    now = datetime.now(timezone.utc).timestamp()
+    # Lock per (email, IP) so a stranger can't lock the real admin out from elsewhere;
+    # a higher per-email ceiling still slows distributed guessing.
+    pair_key = f"{email}|{ip}"
+    fails = [t for t in _login_fails.get(pair_key, []) if now - t < 900]
+    email_fails = [t for t in _login_fails.get(email, []) if now - t < 900]
+    if len(fails) >= 5 or len(email_fails) >= 30:
+        raise HTTPException(429, "Too many failed sign-ins. Try again in 15 minutes.")
     user = await db.users.find_one({"email": email})
     if not user or not user.get("active", True) or not _verify_password(body.password, user["password_hash"]):
+        _login_fails[pair_key] = fails + [now]
+        _login_fails[email] = email_fails + [now]
+        await audit(user["id"] if user else None, "login.failed", None, {"email_domain": email.split("@")[-1]})
         raise HTTPException(401, "Invalid credentials")
+    _login_fails.pop(pair_key, None)
+    _login_fails.pop(email, None)
+    if len(_login_fails) > 5000 or len(_rl_hits) > 20000:
+        _login_fails.clear(); _rl_hits.clear()  # bound memory
     if user["role"] not in STAFF_ROLES:
         raise HTTPException(403, "Staff login only")
     token = _make_token(user)
@@ -376,6 +474,7 @@ async def login(body: LoginIn):
             "branch_id": user.get("branch_id"),
             "active": user.get("active", True),
             "can_export": user.get("can_export", False),
+            "must_change_password": bool(user.get("must_change_password")),
         },
     }
 
@@ -383,6 +482,29 @@ async def login(body: LoginIn):
 @api.get("/auth/me", response_model=UserOut)
 async def me(user=Depends(current_user)):
     return UserOut(**user)
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=72)
+    new_password: str = Field(min_length=10, max_length=72)
+
+
+@api.post("/auth/change-password")
+async def change_password(body: ChangePasswordIn, request: Request, user=Depends(current_user)):
+    _rate_limit("chpw", user["id"], 10, 300)
+    full = await db.users.find_one({"id": user["id"]})
+    if not _verify_password(body.current_password, full["password_hash"]):
+        raise HTTPException(400, "Current password is incorrect")
+    if not _password_ok(body.new_password):
+        raise HTTPException(400, "New password must be at least 10 characters with letters and numbers")
+    if body.new_password == body.current_password or body.new_password == os.environ.get("INITIAL_ADMIN_PASSWORD"):
+        raise HTTPException(400, "Choose a new password you have not used here before")
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password_hash": _hash_password(body.new_password), "must_change_password": False}},
+    )
+    await audit(user["id"], "password.change", user["id"])
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -408,7 +530,9 @@ async def _send_pass_email(reg: dict, pass_token: str) -> None:
     if not EMAIL_KEY or not APP_PUBLIC_URL:
         logger.info("Email skipped (no key or public url)")
         return
-    link = f"{APP_PUBLIC_URL}/pass?ref={reg['reference']}&t={pass_token}"
+    # Link carries only the public reference; the student confirms their email to open the pass.
+    link = f"{APP_PUBLIC_URL}/my-pass?ref={reg['reference']}"
+    first_name = htmllib.escape((reg["full_name"].split() or ["Guest"])[0])
     html = (
         f'<table role="presentation" width="100%" style="background:#FDFBF7;padding:0;margin:0">'
         f'<tr><td align="center" style="padding:32px 16px;font-family:Arial,sans-serif;color:#0B192C">'
@@ -417,7 +541,7 @@ async def _send_pass_email(reg: dict, pass_token: str) -> None:
         f'<p style="font-size:12px;letter-spacing:4px;color:#D4AF37;margin:0">DELTA ACADEMY PRESENTS</p>'
         f'<h1 style="font-family:Georgia,serif;font-size:28px;margin:6px 0 2px 0;color:#0B192C">OLAM 3.0</h1>'
         f'<p style="font-size:12px;letter-spacing:3px;color:#5C6B82;margin:0 0 20px 0">THE GRAND WEDDING</p>'
-        f'<p style="font-size:16px;margin:0 0 8px 0">Namaste {reg["full_name"].split()[0]},</p>'
+        f'<p style="font-size:16px;margin:0 0 8px 0">Namaste {first_name},</p>'
         f'<p style="font-size:14px;color:#374151;line-height:22px;margin:0 0 20px 0">Your registration has been <strong style="color:#10B981">approved</strong>. Your digital QR pass is ready. Please present it at the entrance on event day.</p>'
         f'<a href="{link}" style="display:inline-block;background:#D4AF37;color:#0B192C;text-decoration:none;padding:14px 28px;border-radius:999px;font-weight:bold;font-size:14px">View My Digital Pass</a>'
         f'<p style="font-size:12px;color:#5C6B82;margin:24px 0 0 0">Reference: <strong>{reg["reference"]}</strong></p>'
@@ -444,10 +568,11 @@ async def _send_pass_email(reg: dict, pass_token: str) -> None:
 
 
 @api.post("/registrations", response_model=RegistrationOut)
-async def submit_registration(body: RegistrationIn):
+async def submit_registration(body: RegistrationIn, request: Request):
     branch = await db.branches.find_one({"id": body.branch_id, "active": True})
     if not branch:
         raise HTTPException(400, "Invalid branch")
+    _rate_limit("register-ip", _client_ip(request), 10, 60)
     phone = _normalize_phone(body.mobile)
     now = datetime.now(timezone.utc)
     reg = {
@@ -459,6 +584,8 @@ async def submit_registration(body: RegistrationIn):
         "email": body.email.lower().strip(),
         "branch_id": body.branch_id,
         "batch": body.batch,
+        "batch_no": body.batch_no,
+        "faculty_name": body.faculty_name,
         "status": "pending",
         "rejection_reason": None,
         "created_at": now,
@@ -487,9 +614,10 @@ async def _enrich_registration(reg: dict) -> dict:
 
 
 @api.post("/registrations/lookup")
-async def lookup_registration(body: PassLookupIn):
+async def lookup_registration(body: PassLookupIn, request: Request):
     """Public retrieval. Requires reference AND matching email, returns status
-    and (if approved) the one-time pass token (shown only to the student)."""
+    and (if approved) the derived pass token (shown only to the student)."""
+    _rate_limit("lookup-ip", _client_ip(request), 15, 60)
     ref = body.reference.strip().upper()
     reg = await db.registrations.find_one({"reference": ref}, {"_id": 0})
     if not reg or reg["email"].lower() != body.email.lower().strip():
@@ -501,17 +629,21 @@ async def lookup_registration(body: PassLookupIn):
     }
     if reg["status"] == "approved":
         pass_doc = await db.passes.find_one({"registration_id": reg["id"], "active": True}, {"_id": 0})
-        if pass_doc and pass_doc.get("plain_token"):
-            # Only the student can retrieve the plain token via their email.
-            out["pass_token"] = pass_doc["plain_token"]
+        if pass_doc:
+            out["pass_token"] = _derive_pass_token(reg["id"], int(pass_doc.get("version") or 1))
     return out
 
 
-@api.get("/pass/verify/{token}")
-async def pass_verify_public(token: str):
+class PassVerifyIn(BaseModel):
+    token: str = Field(min_length=10, max_length=200)
+
+
+@api.post("/pass/verify")
+async def pass_verify_public(body: PassVerifyIn, request: Request):
     """Student app uses this to show the live pass detail without authentication,
-    using the token itself as proof-of-possession. Does NOT check in."""
-    th = _hash_pass_token(token)
+    using the token itself as proof-of-possession (sent in the body, not the URL). Does NOT check in."""
+    _rate_limit("verify-ip", _client_ip(request), 30, 60)
+    th = _hash_pass_token(body.token)
     p = await db.passes.find_one({"token_hash": th, "active": True}, {"_id": 0})
     if not p:
         raise HTTPException(404, "Pass not found or revoked")
@@ -575,15 +707,21 @@ async def get_registration(rid: str, user=Depends(require_roles("super_admin", "
 
 
 async def _issue_pass(reg: dict) -> str:
-    """Create or reactivate a pass; returns the plain token (one-time retrieval)."""
+    """Create or re-issue a pass. Each (re)issue bumps the version so any older
+    QR stops working. Only the token hash is stored."""
     existing = await db.passes.find_one({"registration_id": reg["id"]})
-    plain = pysecrets.token_urlsafe(24)
-    th = _hash_pass_token(plain)
     now = datetime.now(timezone.utc)
+    if existing and existing.get("active"):
+        # Already valid: keep the same pass (approve is idempotent).
+        return _derive_pass_token(reg["id"], int(existing.get("version") or 1))
+    version = int(existing.get("version") or 1) + 1 if existing else 1
+    token = _derive_pass_token(reg["id"], version)
+    th = _hash_pass_token(token)
     if existing:
         await db.passes.update_one(
             {"registration_id": reg["id"]},
-            {"$set": {"token_hash": th, "plain_token": plain, "active": True, "revoked_at": None, "issued_at": now}},
+            {"$set": {"token_hash": th, "version": version, "active": True, "revoked_at": None, "issued_at": now},
+             "$unset": {"plain_token": ""}},
         )
     else:
         await db.passes.insert_one(
@@ -591,13 +729,13 @@ async def _issue_pass(reg: dict) -> str:
                 "id": "ps-" + pysecrets.token_hex(6),
                 "registration_id": reg["id"],
                 "token_hash": th,
-                "plain_token": plain,  # one-time retrieval; shown via email + status page only
+                "version": version,
                 "active": True,
                 "issued_at": now,
                 "revoked_at": None,
             }
         )
-    return plain
+    return token
 
 
 @api.post("/registrations/{rid}/approve", response_model=RegistrationOut)
@@ -938,6 +1076,7 @@ async def create_staff(body: StaffCreateIn, user=Depends(require_roles("super_ad
         "role": body.role,
         "branch_id": body.branch_id,
         "can_export": body.can_export,
+        "must_change_password": True,
         "password_hash": _hash_password(body.password),
         "active": True,
         "created_at": datetime.now(timezone.utc),
@@ -953,13 +1092,22 @@ async def create_staff(body: StaffCreateIn, user=Depends(require_roles("super_ad
 
 @api.patch("/staff/{uid}", response_model=UserOut)
 async def update_staff(uid: str, body: StaffUpdateIn, user=Depends(require_roles("super_admin"))):
-    current = await db.users.find_one({"id": uid}, {"_id": 0, "role": 1, "branch_id": 1})
+    current = await db.users.find_one({"id": uid}, {"_id": 0, "role": 1, "branch_id": 1, "active": 1})
     if not current:
         raise HTTPException(404, "Not found")
+    demoting = current["role"] == "super_admin" and (
+        (body.role is not None and body.role != "super_admin") or body.active is False
+    )
+    if demoting:
+        if uid == user["id"]:
+            raise HTTPException(400, "You cannot demote or deactivate your own admin account")
+        if await db.users.count_documents({"role": "super_admin", "active": True}) <= 1:
+            raise HTTPException(400, "At least one active super admin must remain")
     await _check_coordinator_branch(body.role or current["role"], body.branch_id if body.branch_id is not None else current.get("branch_id"))
     upd = {k: v for k, v in body.model_dump(exclude_unset=True).items() if k != "password"}
     if body.password:
         upd["password_hash"] = _hash_password(body.password)
+        upd["must_change_password"] = True  # admin-set password must be changed by the owner
     r = await db.users.find_one_and_update(
         {"id": uid}, {"$set": upd}, return_document=ReturnDocument.AFTER, projection={"_id": 0, "password_hash": 0}
     )
@@ -979,20 +1127,20 @@ async def export_regs(user=Depends(require_roles("super_admin", "coordinator")))
     filt = _branch_filter(user)
     docs = await db.registrations.find(filt, {"_id": 0}).to_list(5000)
     buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["Reference", "Name", "Student ID", "Mobile", "Email", "Branch", "Batch", "Status", "Reviewed By", "Checked In At", "Created At"])
+    w = csv.writer(buf, quoting=csv.QUOTE_ALL)
+    w.writerow(["Reference", "Name", "Student ID", "Mobile", "Email", "Branch", "Batch", "Batch No.", "Faculty Name", "Status", "Reviewed By", "Checked In At", "Created At"])
     for d in docs:
         branch = await db.branches.find_one({"id": d["branch_id"]}, {"_id": 0, "name": 1})
         att = await db.attendance.find_one({"registration_id": d["id"]}, {"_id": 0})
-        w.writerow(
-            [
-                d["reference"], d["full_name"], d["student_code"], d["mobile"], d["email"],
-                branch["name"] if branch else "", d["batch"], d["status"],
-                d.get("reviewed_by_name") or "",
-                att["checked_in_at"].isoformat() if att else "",
-                d["created_at"].isoformat(),
-            ]
-        )
+        # Neutralise spreadsheet formulas in any user-supplied cell (CSV injection).
+        w.writerow([_csv_safe(v) for v in [
+            d["reference"], d["full_name"], d["student_code"], d["mobile"], d["email"],
+            branch["name"] if branch else "", d["batch"], d.get("batch_no") or "", d.get("faculty_name") or "", d["status"],
+            d.get("reviewed_by_name") or "",
+            att["checked_in_at"].isoformat() if att else "",
+            d["created_at"].isoformat(),
+        ]])
+    await audit(user["id"], "export.csv", None, {"rows": len(docs)})
     buf.seek(0)
     return StreamingResponse(
         iter([buf.getvalue()]),

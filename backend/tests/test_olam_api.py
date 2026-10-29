@@ -9,8 +9,9 @@ from dotenv import load_dotenv
 load_dotenv("/app/frontend/.env")
 BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
-ADMIN = {"email": "amalgkrishnaadmin@olam.delta", "password": "Admin@12345"}
+ADMIN = {"email": "qa-admin@olam.delta", "password": "QaAdmin#2026x"}
 STAFF_PW = "TestPass@123"
+STAFF_NEW_PW = "TestPassNew2026"
 
 
 def _login(email, pw):
@@ -19,17 +20,27 @@ def _login(email, pw):
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 
+def _post_rl(url, **kw):
+    # public endpoints are IP rate-limited (registrations 10/min); wait out the window once on 429
+    import time
+    r = requests.post(url, timeout=30, **kw)
+    if r.status_code == 429:
+        time.sleep(61)
+        r = requests.post(url, timeout=30, **kw)
+    return r
+
+
 def _register(branch="br-1", code=None, email="delivered@resend.dev"):
     code = code or "TEST_" + uuid.uuid4().hex[:8]
-    r = requests.post(f"{API}/registrations", json={
+    r = _post_rl(f"{API}/registrations", json={
         "full_name": "TEST Student", "student_code": code, "mobile": "9876543210",
-        "email": email, "branch_id": branch, "batch": "TEST_Batch", "confirm": True}, timeout=30)
+        "email": email, "branch_id": branch, "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True})
     assert r.status_code == 200, r.text
     return r.json()
 
 
 def _lookup(ref, email="delivered@resend.dev"):
-    return requests.post(f"{API}/registrations/lookup", json={"reference": ref, "email": email}, timeout=30)
+    return _post_rl(f"{API}/registrations/lookup", json={"reference": ref, "email": email})
 
 
 def _scan(h, token):
@@ -53,7 +64,10 @@ def staff(admin):
             "email": email, "password": STAFF_PW, "name": f"TEST {role}", "role": role, "branch_id": br}, timeout=30)
         assert r.status_code == 200, r.text
         assert r.json()["role"] == role
-        out[role] = _login(email, STAFF_PW)
+        h = _login(email, STAFF_PW)
+        c = requests.post(f"{API}/auth/change-password", headers=h, json={"current_password": STAFF_PW, "new_password": STAFF_NEW_PW}, timeout=30)
+        assert c.status_code == 200, c.text
+        out[role] = _login(email, STAFF_NEW_PW)
     return out
 
 
@@ -86,15 +100,15 @@ class TestRegistration:
         reg = _register(code=code)
         assert reg["status"] == "pending"
         assert reg["reference"].startswith("OLM-") and len(reg["reference"]) == 10
-        r = requests.post(f"{API}/registrations", json={
+        r = _post_rl(f"{API}/registrations", json={
             "full_name": "TEST Dup", "student_code": code.lower(), "mobile": "9876543210",
-            "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "TEST_Batch", "confirm": True}, timeout=30)
+            "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True})
         assert r.status_code == 409
 
     def test_confirm_false(self):
         r = requests.post(f"{API}/registrations", json={
             "full_name": "TEST X", "student_code": "TEST_" + uuid.uuid4().hex[:6], "mobile": "9876543210",
-            "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "B", "confirm": False}, timeout=30)
+            "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "B", "batch_no": "B1", "faculty_name": "TEST Fac", "confirm": False}, timeout=30)
         assert r.status_code == 422
 
     def test_lookup_flow(self, admin):
@@ -106,9 +120,9 @@ class TestRegistration:
         assert a.status_code == 200 and a.json()["status"] == "approved"
         tok = _lookup(reg["reference"]).json()["pass_token"]
         assert tok
-        v = requests.get(f"{API}/pass/verify/{tok}", timeout=30)
+        v = requests.post(f"{API}/pass/verify", json={"token": tok}, timeout=30)
         assert v.status_code == 200 and v.json()["registration"]["reference"] == reg["reference"]
-        assert requests.get(f"{API}/pass/verify/garbage-token-xyz", timeout=30).status_code == 404
+        assert requests.post(f"{API}/pass/verify", json={"token": "garbage-token-xyz"}, timeout=30).status_code == 404
 
 
 # --- RBAC

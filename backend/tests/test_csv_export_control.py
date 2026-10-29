@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv("/app/frontend/.env")
 BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL").rstrip("/")
 API = f"{BASE_URL}/api"
-ADMIN = {"email": "amalgkrishnaadmin@olam.delta", "password": "Admin@12345"}
+ADMIN = {"email": "qa-admin@olam.delta", "password": "QaAdmin#2026x"}
 PW = "TestPass@123"
 CSV = f"{API}/export/registrations.csv"
 
@@ -35,7 +35,10 @@ def users(admin):
         r = requests.post(f"{API}/staff", headers=admin, json={
             "email": email, "password": PW, "name": f"TEST csv {role}", "role": role, "branch_id": br}, timeout=30)
         assert r.status_code == 200, r.text
-        out[role] = {"id": r.json()["id"], "created": r.json(), "h": _login(email, PW)}
+        h = _login(email, PW)  # new staff must change password before using other endpoints (SEC-001)
+        c = requests.post(f"{API}/auth/change-password", headers=h, json={"current_password": PW, "new_password": "TestPassNew2026"}, timeout=30)
+        assert c.status_code == 200, c.text
+        out[role] = {"id": r.json()["id"], "created": r.json(), "h": _login(email, "TestPassNew2026")}
     yield out
     for u in out.values():  # deactivate (no DELETE endpoint); DB cleanup via cleanup_test_data.py
         requests.patch(f"{API}/staff/{u['id']}", headers=admin, json={"active": False}, timeout=30)
@@ -82,7 +85,7 @@ class TestCsvControl:
 
     def test_super_admin_always(self, admin):
         r = requests.get(CSV, headers=admin, timeout=30)
-        assert r.status_code == 200 and r.text.startswith("Reference")
+        assert r.status_code == 200 and r.text.lstrip('"').startswith("Reference")
 
     def test_scanner_forbidden(self, admin, users):
         s = users["scanner"]

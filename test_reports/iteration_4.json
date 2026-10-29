@@ -1,0 +1,37 @@
+{
+  "summary": "Security-fix verification (SEC-001/002/003) + scanner regression. Backend: 9/9 pytest pass (owner forced pw-change 403 on /stats, /auth/me OK; 5 failed logins -> 429 lockout even with correct pw; new staff must_change_password=true, change-password wrong-current/weak/no-digit 400, valid 200 then endpoints unlocked; self demote/deactivate 400; CSV formula cells prefixed with ' and QUOTE_ALL; passes collection has no plain_token, POST /api/pass/verify works, old GET /pass/verify/{token} 404/405, idempotent approve keeps token, reject+reapprove issues new token and old one scans REVOKED/INVALID; VALID->ALREADY_CHECKED_IN; 6 concurrent scans -> exactly 1 VALID). Frontend (375x667): owner login -> /staff/change-password, weak/no-digit/mismatch errors shown, direct /staff/dashboard nav bounced back to change-password, sign-out returns to login (owner password NOT changed). New coordinator -> forced screen -> wrong current shows server error -> valid change -> dashboard loads and persists after reload. QA admin dashboard shows dashboard-change-password-btn (voluntary screen shows cancel, no signout). /my-pass lookup -> status-view-pass-btn -> /pass?ref=OLM-95732F (no token in URL), qr-pass-card renders and survives reload; /pass?ref without stored token shows friendly message. One new finding: per-IP rate limits can be bypassed by spoofing X-Forwarded-For.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "ALL per-IP rate limits (/api/auth/login, /api/registrations/lookup, /api/registrations, /api/pass/verify)", "issue": "_client_ip() (server.py:127-129) trusts the FIRST X-Forwarded-For value, which is client-controlled. Verified: 18 lookups with random X-Forwarded-For headers all returned 404 (never 429), while 17 un-spoofed lookups returned 429 from the 16th. Per-IP throttling is therefore bypassable (brute-force of reference+email or login spraying)."},
+      {"endpoint": "/api/auth/login", "issue": "Lockout is keyed only by email (server.py:420-424). Anyone can lock the owner/any admin out for 15 min with 5 bad attempts (account-lockout DoS). Consider key email+IP, or progressive delay instead of hard lock."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "staff/dashboard (coordinator)", "issues": ["Header row overflows at 375px for longer names: 'Sign out' text is clipped at the right edge when greeting is 'Hi, TEST UI Coord' (header has Password + Sign out + greeting in one row). Allow greeting to wrap/shrink or move actions below."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_security_fixes.py", "/app/backend/tests/setup_ui_security.py", "/app/test_reports/pytest/pytest_security.xml"],
+  "action_items": [
+    "Fix _client_ip: use the right-most (ingress-appended) X-Forwarded-For hop or X-Real-IP set by the trusted proxy instead of the first, client-supplied value.",
+    "Consider making login lockout email+IP scoped (or exponential backoff) to avoid admin lockout DoS.",
+    "Older regression files /app/backend/tests/test_olam_api.py (and others using ADMIN=amalgkrishnaadmin) now fail by design because owner must change password; switch them to qa-admin@olam.delta / QaAdmin#2026x.",
+    "Minor: dashboard header clipping of 'Sign out' on 375px for long coordinator names."
+  ],
+  "critical_code_review_comments": [
+    "Pass token = HMAC(JWT_SECRET, reg_id:version) and stored hash = HMAC(JWT_SECRET, token): rotating JWT_SECRET invalidates every issued pass and every session at once; consider a separate PASS_SECRET.",
+    "Staff manual scan by OLM- reference (server.py:803-810) bypasses token possession - acceptable as staff-only fallback, but ensure it is audited.",
+    "Email link now uses /my-pass?ref=... (no token) - good."
+  ],
+  "updated_files": ["/app/backend/tests/test_security_fixes.py (new)", "/app/backend/tests/setup_ui_security.py (new)"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "Created TEST_ staff/registrations during tests; all removed afterwards. Remaining: OLM-8932B1, OLM-E9C76C, OLM-72857B, OLM-E04B9A (pre-existing non-test data), qa-admin, owner admin (must_change_password=true, original password).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use qa-admin@olam.delta / QaAdmin#2026x for admin work; owner admin is intentionally stuck in forced-change mode - never submit a valid change for it. Rate limits are in-memory (restart backend to reset). Run: pytest /app/backend/tests/test_security_fixes.py (pytest.ini uses xdist 2 workers). setup_ui_security.py creates a forced-change coordinator + approved TEST registration for UI tests; clean up with cleanup_test_data.py.",
+  "rca_of_issue": "XFF bypass: _client_ip returns xff.split(',')[0]; Kubernetes ingress appends the real client IP to any client-provided X-Forwarded-For, so the first entry is attacker-controlled. Mitigation: take the last entry (or the entry at position -N for N trusted proxies)."
+}

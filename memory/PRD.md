@@ -41,3 +41,8 @@ Online student registration, branch coordinator approval, secure QR pass, duplic
 ## Iteration 3 (Oct 2026)
 - User trophy artwork (assets/images/olam-bg.jpg) as background on landing, register, confirmation, my-pass, pass, staff login (BgScreen + ivory panel for readability, centered text on landing)
 - Coordinator CSV control: users.can_export (default false); admin toggles per coordinator in Staff Management; /api/export/registrations.csv returns 403 for coordinators without permission; dashboard hides Export button and shows notice
+
+## Iteration 4-6 (Oct 2026) — Security audit + new fields
+- Security: forced password change for seeded/admin-set passwords, login lockout per email+IP (5/15min) + per-email ceiling 30, per-IP rate limits (login 20/min, lookup 15/min, register 10/min, verify 30/min) using real client IP (XFF index -(TRUSTED_PROXY_HOPS+1), hops=2), CSV formula neutralising + QUOTE_ALL, pass tokens derived via HMAC(reg_id:version) — no plain tokens stored; email link has only reference; pass page keeps token on device (not URL); POST /api/pass/verify; last-admin guard; HTML-escaped email name; change-password screen
+- Registration: mandatory Batch No. and Faculty Name text fields (all fields mandatory, trimmed, min lengths enforced after trim); shown in dashboard, my-pass, CSV
+- QA admin for tests: qa-admin@olam.delta (see test_credentials.md)

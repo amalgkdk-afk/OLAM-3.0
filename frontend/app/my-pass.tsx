@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { BgScreen, panel } from "@/src/components/bg-screen";
+import { storage } from "@/src/utils/storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/src/api";
@@ -58,7 +59,8 @@ export default function Status() {
             <Pill label={reg.status} tone={reg.status === "approved" ? "success" : reg.status === "pending" ? "warning" : "error"} />
           </View>
           <Text style={styles.name}>{reg.full_name}</Text>
-          <Text style={styles.meta}>{reg.branch_name} • {reg.batch}</Text>
+          <Text style={styles.meta}>{reg.branch_name} • {reg.batch}{reg.batch_no ? ` • Batch No. ${reg.batch_no}` : ""}</Text>
+          {reg.faculty_name ? <Text style={styles.meta}>Faculty: {reg.faculty_name}</Text> : null}
           <Text style={styles.meta}>Ref: {reg.reference}</Text>
           {reg.status === "pending" && (
             <Text style={styles.helper}>Your branch coordinator is reviewing your details. Please check back soon.</Text>
@@ -70,7 +72,7 @@ export default function Status() {
             </View>
           )}
           {reg.status === "approved" && token && (
-            <GoldButton testID="status-view-pass-btn" label="View my digital pass" onPress={() => router.push({ pathname: "/pass", params: { ref: reg.reference, t: token } })} style={{ marginTop: spacing.lg }} />
+            <GoldButton testID="status-view-pass-btn" label="View my digital pass" onPress={async () => { await storage.setItem(`pass_${reg.reference}`, token); router.push({ pathname: "/pass", params: { ref: reg.reference } }); }} style={{ marginTop: spacing.lg }} />
           )}
         </Card>
       )}

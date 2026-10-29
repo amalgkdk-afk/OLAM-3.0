@@ -19,7 +19,8 @@ export default function StaffLogin() {
     setErr(null); setBusy(true);
     try {
       const u = await login(email.trim(), pw);
-      if (u.role === "scanner") router.replace("/staff/scanner");
+      if (u.must_change_password) router.replace("/staff/change-password");
+      else if (u.role === "scanner") router.replace("/staff/scanner");
       else router.replace("/staff/dashboard");
     } catch (e: any) { setErr(e.message); }
     finally { setBusy(false); }

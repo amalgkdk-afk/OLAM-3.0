@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 6: Mandatory Batch No./Faculty Name fields + IP-fix verification. Backend: 18/18 new tests pass (missing & whitespace-only batch_no/faculty_name/full_name/student_code/mobile/batch -> 422; valid -> 200 with stripped batch_no & faculty_name; list/get/CSV/lookup include fields; old registrations OLM-8932B1/E9C76C/72857B/E04B9A still listed; approve -> scan VALID -> ALREADY_CHECKED_IN). Legacy regression suite 39/39 pass (test payloads updated with new required fields). IP fix verified: temporarily logged raw XFF via external URL -> '35.193.209.116,104.22.62.192,34.111.104.211' (normal) and '9.9.9.9, 8.8.8.8,35.193.209.116,172.69.59.105,34.111.104.211' (spoofed), so index -(2+1) is always the real client; 17 spoofed lookups -> 429 at the 15th (one prior lookup in the same window); internally, varied spoofed-left XFF with the same real client -> 429 at the 16th, while a different real client got 404 (a separate bucket). Temp log reverted, backend restarted. Frontend (390x844): new fields render after Batch chips, readable on the ivory panel; empty submit -> 'Please fill in: Full Name, Student ID, Mobile Number, Email, Branch, Batch, Batch No., Faculty Name.'; whitespace-only -> 'Please fill in: Batch, Batch No., Faculty Name.' / 'Please fill in: Faculty Name.', no submit; full fill -> /confirmation with OLM-F6FD90. Admin dashboard card shows 'Batch No. B-77 • Faculty: TEST Ms. Faculty UI'; Approve works; /my-pass shows Batch No. and Faculty; scan VALID then ALREADY_CHECKED_IN. No deprecated Expo packages.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/registrations", "issue": "Field(min_length) is checked before the strip validator, so ' a ' for faculty_name/full_name (min 2) is accepted and stored as 'a' (1 char). Use mode='before' strip or re-check length after strip."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/register", "issues": ["The sticky Submit CTA bar overlaps form content as you scroll. When the form is scrolled to its end, register-error near the bottom can sit partly behind the CTA bar, so after tapping Submit the user may not see the error without scrolling. Consider scrolling to the error or rendering it above the CTA."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_batchno_faculty.py", "/app/backend/tests/test_followup_fixes.py", "/app/test_reports/pytest/pytest_iter6_batchno.xml", "/app/test_reports/pytest/pytest_iter6_regression.xml"],
+  "action_items": [
+    "(Low) Enforce min length after trimming in RegistrationIn (e.g. a mode='before' strip validator) so ' a ' is rejected for faculty_name/full_name.",
+    "(Low) In register.tsx, scroll to register-error (or show it inside the CTA bar) so the validation message is never hidden behind the sticky Submit bar.",
+    "(Low) register.tsx set(): use the functional setForm(f => ({...f, [k]: v})) to avoid stale-closure overwrites on rapid input."
+  ],
+  "critical_code_review_comments": [
+    "_client_ip logic is correct for the observed edge chain (client, Cloudflare, GCP LB). With fewer than 3 entries (e.g. internal calls) it falls back to xff[0], which is caller-controlled. That's fine because the port is not exposed, but note it if the topology changes.",
+    "Frontend validation trims and lists all missing labels; the backend is the source of truth and also strips values."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_batchno_faculty.py (new)",
+    "/app/backend/tests/test_olam_api.py, test_branches_attendance.py, test_security_fixes.py, setup_iter5_ui.py, setup_ui_security.py (added batch_no/faculty_name to registration payloads - test-only)"
+  ],
+  "success_rate": {"backend": "100% (18/18 new + 39/39 regression + spoof rate-limit test)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None kept. All TEST_ registrations/staff were removed with tests/cleanup_test_data.py; protected records (OLM-8932B1, OLM-E9C76C, OLM-72857B, OLM-E04B9A, qa-admin, owner) are kept.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "In Playwright, do not force=True-click Batch chips after scroll_into_view: the sticky CTA bar covers them and the click lands on Submit. Use normal clicks. Batch chip testIDs are register-batch-<batch id> (e.g. bt-54de76 = A1). Restart the backend after rate-limit tests. Registration payloads now require batch_no and faculty_name.",
+  "rca_of_issue": ""
+}
