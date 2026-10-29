@@ -280,8 +280,8 @@ async def startup():
     await db.audit_logs.create_index("timestamp")
 
     # Seed default branches
-    for i, name in enumerate(["Branch 1", "Branch 2", "Branch 3"], start=1):
-        if not await db.branches.find_one({"name": name}):
+    for i, name in enumerate(["KALOOR", "ELAMAKKARA", "MUVATTUPUZHA"], start=1):
+        if not await db.branches.find_one({"id": f"br-{i}"}):
             await db.branches.insert_one(
                 {
                     "id": f"br-{i}",

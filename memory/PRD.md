@@ -29,3 +29,4 @@ Online student registration, branch coordinator approval, secure QR pass, duplic
 - P1: Attendance history page w/ duplicate attempt log, audit log viewer UI, branch rename/deactivate UI, event settings (registration open/close toggle), coordinator CSV permission toggle
 - P1: Rate limiting on public lookup / login
 - P2: Profile photo upload, pagination, registration trends chart, printable pass
+- Branches renamed to KALOOR (br-1), ELAMAKKARA (br-2), MUVATTUPUZHA (br-3)
