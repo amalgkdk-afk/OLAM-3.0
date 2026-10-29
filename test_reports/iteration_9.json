@@ -1,0 +1,49 @@
+{
+  "summary": "Iteration 9 tested 3 features: role/branch sign-in, coordinator branch isolation + bulk approve, and pass reminder emails. Backend: 23/23 new pytest tests pass, and 35/35 regression tests pass (test_olam_api, test_settings_faculty). Frontend (390x844): staff login role/branch picker, coordinator branch check, MUVATTUPUZHA coordinator dashboard, bulk select/approve and the event-settings reminder card all work. One HIGH real-world problem: the email provider returns 429 (rate limited). Once that starts, every remaining reminder and pass email is dropped, nothing retries, and the UI still says 'Sending N reminder emails now'. I reproduced it twice: 6/6 reminders failed (0 sent), and 1 of 3 bulk-approve pass emails failed. No deprecated Expo packages were found in the files reviewed.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/reminders/send and POST /api/registrations/bulk-approve (_send_email / _send_reminders / _send_many)", "issue": "The email provider (integrations.emergentagent.com email/send) returns 429 'email rate limit exceeded' after roughly 8-10 emails in a short window. _send_email logs a warning and returns False with no retry or backoff. Result: reminders stay unsent (pending is unchanged, 'Reminder emails sent: 0' in the log), and pass emails from bulk approve are silently lost, with no record and no way to resend. Bulk-approving 50 students will lose most of their pass emails. Reproduced twice: at 14:13:58 all 6 reminders got 429, and again at 14:15:50 after waiting 75s. In the bulk run of 3, 1 pass email got 429.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "Grammar: 'This account is a Admin account' should be 'an Admin account'. Use the right article or rephrase, e.g. 'This is an Admin account. Please choose Admin to sign in.'"},
+      {"endpoint": "POST /api/registrations/bulk-approve -> _approve_one", "issue": "The update_one filter is only {id}. It does not include status:'pending', so two concurrent approve or bulk calls can both pass the status check and call _issue_pass twice. A second pass version can make the first emailed token stale. Use an atomic find_one_and_update with {id, status:'pending'}."},
+      {"endpoint": "POST /api/reminders/send", "issue": "The 'queued' count is computed before the background task runs, so it is reported as if sent even when every send fails. There is no last-run result (sent/failed) the UI can show."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "event-settings reminder status", "issue": "After 'Save reminder settings' with a new event date, the reminder-status text and the Send button count stay stale (they still showed '3 reminded • 3 still to remind'; after a reload it was '0 reminded • 6'). loadReminder() is only called on mount and once 4s after send. Call loadReminder() after save() succeeds, and poll after send until pending stops changing.", "testID": "reminder-status", "priority": "MEDIUM"},
+      {"component": "event-settings reminder-msg", "issue": "The message is always green ('Sending 6 reminder emails now') even when the backend fails every email (429). Errors from sendNow also show in the success color.", "testID": "reminder-msg", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Reminder send / bulk approve emails", "issue": "Provider 429 failures are invisible to the admin. The UI claims emails are on their way.", "affected_testIDs": ["reminder-confirm-btn", "reminder-msg", "bulk-result"]}
+    ],
+    "design_issues": [
+      {"screen": "staff/dashboard header (390px)", "issues": ["The coordinator eyebrow 'MUVATTUPUZHA • COORDINATOR' is cut off as 'MUVATTUPUZHA • COOR…' because the Password/Sign out buttons take the space. Allow 2 lines, shorten it, or move the actions."]},
+      {"screen": "staff/dashboard Registrations", "issues": ["The select-reg-{id} checkbox is 32x32. hitSlop has no effect on web, so the touch target is under 44px."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter9_roles_bulk_reminders.py", "/app/backend/tests/setup_iter9_ui.py", "/app/test_reports/pytest/pytest_iter9.xml"],
+  "action_items": [
+    "HIGH: Make email sending robust to provider 429. Retry with exponential backoff and honor Retry-After, or use a persistent queue (e.g. an email_outbox collection with status pending/sent/failed and a retry worker). Throttle well below the provider limit; 0.6s spacing is not enough. Record pass_email_sent_at / failed on the registration, and add a 'resend pass email' action.",
+    "Have /reminders/status (or a last_run doc) expose sent/failed counts from the last run, and show failures in event-settings instead of a green 'Sending N' message.",
+    "event-settings: call loadReminder() after a successful save, and poll status after send until it completes.",
+    "Fix the login 403 grammar ('a Admin' -> 'an Admin').",
+    "Make the approval atomic: update with filter {id, status:'pending'} and only issue a pass if the update modified a document.",
+    "Dashboard: fix the cut-off coordinator eyebrow at 390px, and make the bulk checkbox touch target 44x44."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1458 lines. Split it into routers (auth, settings/reminders, registrations, scan, staff, reports).",
+    "PUT /api/settings replaces every field. A client that leaves out event_date/auto_reminder will wipe the event date and reset auto_reminder to True. Consider a PATCH, or keep existing values when a field is omitted.",
+    "_reminder_loop marks auto_reminder_done_for before sending, so if every send fails (429) the automatic day-before reminder is never retried.",
+    "Wrong password still returns a generic 401 with no role/branch hints. The role/branch checks only run after password verification, which is good."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter9_roles_bulk_reminders.py (new)", "/app/backend/tests/setup_iter9_ui.py (new)"],
+  "success_rate": {"backend": "100% (23/23 new + 35/35 regression); email delivery limited by provider 429", "frontend": "~90% (all flows work; 2 reminder UI state bugs, 2 design issues)"},
+  "seed_data_creation": "Created TEST_ registrations (@resend.dev emails) and test_ staff. All removed with cleanup_test_data.py. The settings doc was deleted, so registration is open. qa-admin and owner were kept.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use the external URL. Restart the backend before running tests (in-memory rate limits). The email provider rate-limits at about 8-10 emails per short window, so space email-heavy tests out. Real registrations: OLM-E04B9A and OLM-7A2076 were rejected by the OWNER account (u-e148b11b36ed, reason 'not valid') at 14:15 during this run, according to audit_logs. That was not done by the tests, so all 5 real ones are now 'rejected'. Do not restore them.",
+  "rca_of_issue": "Reminder/pass email loss: _send_email -> provider HTTP 429 'email rate limit exceeded' -> returns False with no retry. _send_reminders leaves reminder_sent_for unset (pending unchanged), and _send_many drops pass emails silently. Repro: bulk-approve 3 students, then send reminders to 6 within about 2 minutes. The backend.err.log shows the 429 warnings and 'Reminder emails sent: 0'. Mitigation: queue + backoff + status tracking."
+}

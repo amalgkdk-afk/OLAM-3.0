@@ -59,10 +59,10 @@ export async function api<T = any>(path: string, init: RequestInit = {}): Promis
   return data as T;
 }
 
-export async function login(email: string, password: string) {
+export async function login(email: string, password: string, signInAs?: Role, branchId?: string) {
   const data = await api<{ access_token: string; user: AuthUser }>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, sign_in_as: signInAs, branch_id: branchId }),
   });
   await saveSession(data.access_token, data.user);
   return data.user;

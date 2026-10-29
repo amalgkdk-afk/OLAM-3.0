@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 11 (time-boxed, about 15 min): checked the persistent email queue (db.email_queue). PASS: (1) coordinator bulk-approve of 3 @resend.dev regs created exactly 3 'pass' jobs (key v1), and pass_email_status went queued -> sent once the worker delivered. (2) When the provider returned 429, the job went back to pending with attempts incremented (1->4) and next_attempt_at +60s. The log showed 'Email provider busy; pausing 60s'. No job became 'failed', and everything was delivered by about 14:56 UTC. (3) Restart safety: after 'supervisorctl restart backend', pending jobs were still there. A job I forced to 'sending' was recovered to pending. A registration left 'queued' with its job deleted got a new job at startup. All were later sent. (4) No duplicates: running bulk-approve again skipped all 3 with 'already approved', and a single re-approve did not add a job (still 3). (5) Reminders: PUT /settings event_date=2026-03-15, then POST /reminders/send returned {queued:3} (kind 'reminder', key=event_date). A second POST returned 409. /reminders/status has all 7 fields, and after delivery shows already_sent=3, pending=0, sending=false. (6) GET /email/queue: admin gets 200 {pending,sent,failed}, coordinator gets 403. (7) resend-email on a failed job set it back to pending (attempts 0), still 1 job, then sent. FRONTEND at 390x844: header shows 'KALOOR BRANCH' with Password and Sign out on row 1 (both 44px tall). 'Coordinator · TEST Coord Eleven' is on its own row, wraps to 2 lines and is not truncated. Approved cards show 'Pass email queued (sends automatically)'. The event-settings status line shows '... sending in background…' and the 'Send reminder now' button is aria-disabled while jobs are queued. One minor bug found (below).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/registrations/{id}/approve (already approved) and POST /api/registrations/{id}/resend-email (pass job already 'sent')", "issue": "Both endpoints set pass_email_status='queued' before calling _enqueue_email. _enqueue_email hits DuplicateKeyError because a (pass, reg, v1) job already exists with status 'sent', and it only reactivates 'failed' jobs. So no email is sent and the registration stays 'queued' forever. The UI then shows 'Pass email queued (sends automatically)' even though the email was delivered. Reproduced: reg approved -> job sent -> approve again via API -> pass_email_status stuck 'queued' with job status 'sent'. The startup recovery (server.py:445-447) cannot fix this, because it calls _send_pass_email again and hits the same duplicate."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Approved registration card", "issue": "Shows 'Pass email queued (sends automatically)' for a registration whose email was already delivered (caused by the backend bug above).", "testID": "email-status-{id}", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter11_email_queue.py", "/app/test_reports/pytest/iter11.xml"],
+  "action_items": [
+    "In _send_pass_email / approve / resend-email: skip setting 'queued' when the job is already 'sent' and the registration is already approved with an active pass (re-approve of an approved reg should not change status). For resend, re-queue the existing 'sent' job: update status->pending, attempts 0, next_attempt_at now. Only set pass_email_status='queued' when _enqueue_email returns True.",
+    "Optional: event-settings.tsx sendNow setInterval is never cleared on unmount. Store it in a ref and clear it in a useEffect cleanup. Also, opening the page while reminders are sending shows a fixed status that never polls; consider polling while rem.sending."
+  ],
+  "critical_code_review_comments": [
+    "server.py:439-447 start the email worker task before the email_queue indexes are created and before 'sending' jobs are reset. This is harmless in practice, but it is cleaner to start the worker after recovery.",
+    "server.py:853 and 1043 wrap _send_pass_email in asyncio.create_task even though it is now only a fast DB enqueue. Awaiting it directly would make queuing deterministic and avoid losing the job if the process restarts in between; the startup recovery covers this case today.",
+    "The worker sorts by created_at, so one rate-limited job is retried at the head of the queue. That is fine with a single worker."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter11_email_queue.py (new)"],
+  "success_rate": {"backend": "100% of requested checks (5/5 pytest + restart + 429 + delivery); 1 minor edge-case bug", "frontend": "100% of requested checks"},
+  "seed_data_creation": "3 TEST Iter11 registrations (br-1, @resend.dev), 1 test coordinator test_coord11_*@olam.delta, settings event_date=2026-03-15. All cleaned up: registrations, passes and email_queue jobs deleted, staff deleted, db.settings.deleteMany({}) run. The 5 real registrations were not touched (all are currently rejected, so reminders did not email them).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The frontend env key is EXPO_PUBLIC_BACKEND_URL. The provider allows about 6-10 emails per 10 minutes; 429s produce 'pausing 60s' log lines and the job is retried later. The test file uses pymongo against MONGO_URL to inspect email_queue and writes created ids to /tmp/iter11_state.json. The system clock reads 2026-10-29.",
+  "rca_of_issue": "Stuck 'queued': _enqueue_email only revives jobs with status 'failed'. Its insert hits the unique (kind, registration_id, key) index when a 'sent' job exists, and it returns False. The callers (approve, resend-email) set pass_email_status='queued' unconditionally before or regardless of that result, so the status never reaches 'sent'. Fix: only set 'queued' when the enqueue succeeds, and let resend revive 'sent' jobs."
+}

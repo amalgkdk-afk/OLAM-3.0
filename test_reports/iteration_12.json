@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 12 (backend only, time-boxed): re-verified the 'stuck queued' fix. PASS: (1) First single approve creates exactly 1 pass job (v1, pending) with status 'queued'. The real worker then delivered it and the status became 'sent'. (2) Bulk-approve of 2 regs created 1 job each, queued -> sent (delivered 15:09 UTC). (3) Re-approving an already-sent reg returns 200 with pass_email_status 'sent', still 1 job (status sent), no new job. (4) resend-email on a sent job set that job back to pending (attempts 0) and the status to 'queued', still 1 job. The worker then redelivered it (new sent_at) and the status went back to 'sent'. (5) The worker starts after the startup recovery: after 'supervisorctl restart backend', 'Application startup complete' was followed 2.5 s later by 'Email provider busy; pausing 60s' for a pending job, so jobs keep being processed. (6) Regression test_iter11_email_queue.py passed 5/5. New test_iter12_reapprove_resend_status.py passed 4/4. One new minor edge case was found (below).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/registrations/{id}/resend-email", "issue": "The resend update_many re-queues every 'pass' job for the registration, whatever its key. After reject (pass revoked) -> re-approve (pass v2), there are v1 and v2 jobs. Resend then sets BOTH back to pending, so the student gets 2 identical 'pass ready' emails and 2 provider sends are used. Reproduced: jobs after resend = [('v1','pending'),('v2','pending')]. Fix: limit the update to the current key, i.e. key = f\"v{pass.version}\" (the same key that _send_pass_email computes)."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter12_reapprove_resend_status.py",
+    "/app/backend/tests/test_iter11_email_queue.py",
+    "/app/test_reports/pytest/iter12.xml",
+    "/app/test_reports/pytest/iter12_regress11.xml"
+  ],
+  "action_items": [
+    "resend_pass_email (server.py:857): add the current pass key to the update_many filter so older-version jobs are not re-sent (look up db.passes version, key=f'v{version}')."
+  ],
+  "critical_code_review_comments": [
+    "_send_pass_email now maps an existing job's status to the registration status (sent/failed/skipped->failed, else queued). This is correct and fixes the iteration-11 bug.",
+    "Worker task is started at server.py:447, after the indexes are created and recovery runs. It is held in _bg_tasks, which prevents it from being garbage-collected. Good.",
+    "The queue is FIFO by created_at, so a reminder job that keeps getting 429 blocks the pass jobs behind it. Each retry pauses 60 s. With the preview provider limits, a newly approved student's pass email can wait several minutes behind bulk reminders. Consider giving 'pass' jobs priority over 'reminder' jobs (sort by kind, then created_at)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter12_reapprove_resend_status.py (new)"],
+  "success_rate": {"backend": "100% of requested checks (iter12 4/4, iter11 regression 5/5, worker-after-restart verified); 1 new minor edge case", "frontend": "not tested (backend only)"},
+  "seed_data_creation": "TEST Iter12 regs (@resend.dev, br-1) plus TEST Iter11 regs and a coordinator from the regression run. All cleaned up: 11 TEST* registrations, 11 passes and 22 email_queue jobs deleted, test_coord1x staff deleted, db.settings.deleteMany({}) run. The 5 real registrations were not touched, and the queue now holds only 4 'sent' jobs (real regs).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "pytest.ini runs xdist with 2 workers (LoadScopeScheduling keeps each module on one worker). The iter12 test waits up to ITER12_WAIT_SENT (default 90 s) for real delivery. If the provider returns 429 it simulates the worker's 'sent' update in the DB, recorded under 'simulated' in /tmp/iter12_state.json. In this run delivery was real, nothing was simulated. Provider 429s are frequent, about 1 send per minute after a burst. Running test_iter11 queues reminders for all approved regs, including those from other tests.",
+  "rca_of_issue": "Iteration-11 bug verified fixed: _send_pass_email no longer sets 'queued' unconditionally, and resend revives 'sent' jobs. New edge case: resend's update_many filter has no key, so jobs for older pass versions are revived as well."
+}

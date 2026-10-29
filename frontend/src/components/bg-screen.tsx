@@ -6,18 +6,28 @@ import { colors, radius, spacing } from "@/src/theme";
 
 export const BG_IMAGE = require("../../assets/images/olam-bg.jpg");
 
-/** Full-screen event artwork with a dark scrim. `dim` controls how much the art recedes. */
-export function BgScreen({ children, dim = 0.6, testID }: { children: React.ReactNode; dim?: number; testID?: string }) {
+/** Event artwork background. The poster is shown whole (never cropped at the edges); a blurred
+ *  copy fills any empty space so every screen size looks intentional. */
+export function BgScreen({ children, dim = 0.6, testID, showPoster = true }: { children: React.ReactNode; dim?: number; testID?: string; showPoster?: boolean }) {
   return (
     <View style={styles.root} testID={testID}>
-      <Image source={BG_IMAGE} style={StyleSheet.absoluteFill} contentFit="cover" contentPosition="top" transition={200} />
-      <LinearGradient
-        colors={[`rgba(0,0,0,${dim * 0.6})`, `rgba(0,0,0,${dim})`, `rgba(0,0,0,${Math.min(dim + 0.25, 0.97)})`]}
-        style={StyleSheet.absoluteFill}
-      />
+      <Image source={BG_IMAGE} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={30} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.55)" }]} />
+      {showPoster ? <Image source={BG_IMAGE} style={StyleSheet.absoluteFill} contentFit="contain" contentPosition="top" transition={200} /> : null}
+      {dim > 0 ? (
+        <LinearGradient
+          colors={[`rgba(0,0,0,${dim * 0.6})`, `rgba(0,0,0,${dim})`, `rgba(0,0,0,${Math.min(dim + 0.25, 0.97)})`]}
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
       {children}
     </View>
   );
+}
+
+/** Full poster, scaled to fit the given area without cropping. */
+export function Poster({ testID }: { testID?: string }) {
+  return <Image testID={testID} source={BG_IMAGE} style={{ flex: 1, width: "100%" }} contentFit="contain" contentPosition="center" transition={200} />;
 }
 
 /** Readable ivory panel that sits on top of the artwork, centered and width-capped for tablets/desktop. */

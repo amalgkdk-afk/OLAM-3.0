@@ -174,6 +174,8 @@ def _ref_code() -> str:
 class LoginIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6, max_length=72)
+    sign_in_as: Optional[Literal["super_admin", "coordinator", "scanner"]] = None
+    branch_id: Optional[str] = None
 
 
 class UserOut(BaseModel):
@@ -292,6 +294,7 @@ class RegistrationOut(BaseModel):
     branch_name: Optional[str] = None
     batch_no: Optional[str] = None
     faculty_name: Optional[str] = None
+    pass_email_status: Optional[str] = None
     batch: str
     status: RegStatus
     rejection_reason: Optional[str] = None
@@ -433,9 +436,18 @@ async def startup():
              "$unset": {"plain_token": ""}},
         )
     await db.scan_attempts.create_index("attempted_at")
+    asyncio.create_task(_reminder_loop())
+    # Email queue: unique job per (kind, registration, key); recover jobs interrupted by a restart.
+    await db.email_queue.create_index([("kind", 1), ("registration_id", 1), ("key", 1)], unique=True)
+    await db.email_queue.create_index([("status", 1), ("next_attempt_at", 1)])
+    await db.email_queue.update_many({"status": "sending"}, {"$set": {"status": "pending"}})
+    async for r in db.registrations.find({"status": "approved", "pass_email_status": {"$in": ["queued", "failed"]}}, {"_id": 0, "id": 1}):
+        if not await db.email_queue.find_one({"kind": "pass", "registration_id": r["id"], "status": {"$in": ["pending", "sending"]}}):
+            await _send_pass_email(r)
+    _bg_tasks.add(asyncio.create_task(_email_worker()))  # start after indexes + recovery
 
 
-@app.on_event("shutdown")
+_bg_tasks: set = set()
 async def shutdown():
     client.close()
 
@@ -484,6 +496,16 @@ async def login(body: LoginIn, request: Request):
         _login_fails.clear(); _rl_hits.clear()  # bound memory
     if user["role"] not in STAFF_ROLES:
         raise HTTPException(403, "Staff login only")
+    # Password already verified: role / branch hints can't leak anything to outsiders.
+    role_label = {"super_admin": "Admin", "coordinator": "Branch Coordinator", "scanner": "Gate Scanner"}
+    if body.sign_in_as and body.sign_in_as != user["role"]:
+        an = "an" if role_label[user["role"]][0] in "AEIOU" else "a"
+        raise HTTPException(403, f"This account is {an} {role_label[user['role']]} account. Please choose '{role_label[user['role']]}' to sign in.")
+    if user["role"] == "coordinator" and body.sign_in_as == "coordinator":
+        own = await db.branches.find_one({"id": user.get("branch_id")}, {"_id": 0, "name": 1})
+        own_name = own["name"] if own else "your branch"
+        if body.branch_id != user.get("branch_id"):
+            raise HTTPException(403, f"This coordinator account belongs to {own_name}. Please choose {own_name} to sign in.")
     token = _make_token(user)
     await audit(user["id"], "login")
     return {
@@ -560,6 +582,16 @@ class EventSettingsIn(BaseModel):
     registration_open: bool
     closed_message: str = Field(min_length=3, max_length=400)
     privacy_notice: str = Field(min_length=20, max_length=3000)
+    event_date: Optional[str] = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    event_time_venue: Optional[str] = Field(default=None, max_length=200)
+    auto_reminder: bool = True
+
+    @field_validator("event_date")
+    @classmethod
+    def _valid_date(cls, v):
+        if v:
+            datetime.strptime(v, "%Y-%m-%d")
+        return v or None
 
 
 async def _get_settings() -> dict:
@@ -570,6 +602,10 @@ async def _get_settings() -> dict:
         "privacy_notice": (s or {}).get("privacy_notice") or DEFAULT_PRIVACY,
         "updated_at": (s or {}).get("updated_at"),
         "updated_by_name": (s or {}).get("updated_by_name"),
+        "event_date": (s or {}).get("event_date"),
+        "event_time_venue": (s or {}).get("event_time_venue"),
+        "auto_reminder": True if not s else bool(s.get("auto_reminder", True)),
+        "auto_reminder_done_for": (s or {}).get("auto_reminder_done_for"),
     }
 
 
@@ -591,6 +627,9 @@ async def update_settings(body: EventSettingsIn, user=Depends(require_roles("sup
         "registration_open": body.registration_open,
         "closed_message": body.closed_message.strip(),
         "privacy_notice": body.privacy_notice.strip(),
+        "event_date": body.event_date,
+        "event_time_venue": (body.event_time_venue or "").strip() or None,
+        "auto_reminder": body.auto_reminder,
         "updated_at": datetime.now(timezone.utc),
         "updated_by_name": user.get("name") or user["email"],
     }
@@ -599,18 +638,196 @@ async def update_settings(body: EventSettingsIn, user=Depends(require_roles("sup
     return await _get_settings()
 
 
+async def _reminder_counts() -> dict:
+    s = await _get_settings()
+    key = s.get("event_date") or datetime.now(timezone.utc).date().isoformat()
+    checked = {a["registration_id"] for a in await db.attendance.find({}, {"_id": 0, "registration_id": 1}).to_list(10000)}
+    approved = await db.registrations.find({"status": "approved"}, {"_id": 0, "id": 1, "reminder_sent_for": 1}).to_list(10000)
+    eligible = [r for r in approved if r["id"] not in checked]
+    pending = [r for r in eligible if r.get("reminder_sent_for") != key]
+    queued = await db.email_queue.count_documents({"kind": "reminder", "key": key, "status": {"$in": ["pending", "sending"]}})
+    failed = await db.email_queue.count_documents({"kind": "reminder", "key": key, "status": "failed"})
+    backlog = await db.email_queue.count_documents({"status": {"$in": ["pending", "sending"]}})
+    return {"eligible": len(eligible), "already_sent": len(eligible) - len(pending), "pending": len(pending),
+            "queued": queued, "failed": failed, "sending": queued > 0, "email_backlog": backlog}
+
+
+async def _queue_reminders(tomorrow: bool) -> int:
+    s = await _get_settings()
+    key = s.get("event_date") or datetime.now(timezone.utc).date().isoformat()
+    checked = {a["registration_id"] for a in await db.attendance.find({}, {"_id": 0, "registration_id": 1}).to_list(10000)}
+    n = 0
+    async for reg in db.registrations.find({"status": "approved", "reminder_sent_for": {"$ne": key}}, {"_id": 0, "id": 1}):
+        if reg["id"] not in checked and await _enqueue_email("reminder", reg["id"], key, {"tomorrow": tomorrow}):
+            n += 1
+    return n
+
+
+@api.get("/reminders/status")
+async def reminder_status(user=Depends(require_roles("super_admin"))):
+    return await _reminder_counts()
+
+
+@api.post("/reminders/send")
+async def reminder_send(user=Depends(require_roles("super_admin"))):
+    if (await _reminder_counts())["queued"] > 0:
+        raise HTTPException(409, "Reminders are already being sent. Please wait.")
+    n = await _queue_reminders(tomorrow=False)
+    await audit(user["id"], "reminders.send", None, {"queued": n})
+    return {"queued": n}
+
+
 # ---------------------------------------------------------------------------
 # REGISTRATION (public submit, status, pass retrieval)
 # ---------------------------------------------------------------------------
-async def _send_pass_email(reg: dict, pass_token: str) -> None:
-    """Fire-and-forget email to approved student with pass link."""
-    if not EMAIL_KEY or not APP_PUBLIC_URL:
-        logger.info("Email skipped (no key or public url)")
-        return
+async def _send_once(to: str, subject: str, html: str) -> str:
+    """One delivery attempt. Returns 'ok', 'retry' (provider busy / transient) or 'fail'."""
+    if not EMAIL_KEY:
+        return "fail"
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(f"{EMAIL_BASE_URL}/api/v1/email/send", headers={"X-Email-Key": EMAIL_KEY},
+                             json={"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME})
+        if r.status_code < 300:
+            return "ok"
+        if r.status_code == 429 or r.status_code >= 500:
+            return "retry"
+        logger.warning("Email rejected: %s %s", r.status_code, r.text[:200])
+        return "fail"
+    except Exception as e:
+        logger.warning("Email send error: %s", e)
+        return "retry"
+
+
+async def _enqueue_email(kind: str, registration_id: str, key: str, extra: Optional[dict] = None) -> bool:
+    """Persistent, de-duplicated email job. Re-queues a previously failed job. Returns True if queued."""
+    now = datetime.now(timezone.utc)
+    r = await db.email_queue.update_one(
+        {"kind": kind, "registration_id": registration_id, "key": key, "status": "failed"},
+        {"$set": {"status": "pending", "attempts": 0, "next_attempt_at": now}},
+    )
+    if r.modified_count:
+        return True
+    try:
+        await db.email_queue.insert_one({
+            "id": "eq-" + pysecrets.token_hex(6), "kind": kind, "registration_id": registration_id, "key": key,
+            "status": "pending", "attempts": 0, "next_attempt_at": now, "created_at": now, **(extra or {}),
+        })
+        return True
+    except DuplicateKeyError:
+        return False
+
+
+MAX_EMAIL_ATTEMPTS = 240  # ~4h+ of retries at >=60s spacing
+
+
+async def _email_worker():
+    """Single worker: survives restarts (jobs live in MongoDB), pauses when the provider rate-limits."""
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            job = await db.email_queue.find_one_and_update(
+                {"status": "pending", "next_attempt_at": {"$lte": now}},
+                {"$set": {"status": "sending"}}, sort=[("created_at", 1)], return_document=ReturnDocument.AFTER,
+            )
+            if not job:
+                await asyncio.sleep(5)
+                continue
+            reg = await db.registrations.find_one({"id": job["registration_id"]}, {"_id": 0})
+            skip = not reg or reg["status"] != "approved" or not APP_PUBLIC_URL
+            if not skip and job["kind"] == "reminder" and await db.attendance.find_one({"registration_id": reg["id"]}):
+                skip = True
+            if skip:
+                await db.email_queue.update_one({"_id": job["_id"]}, {"$set": {"status": "skipped"}})
+                continue
+            if job["kind"] == "pass":
+                subject, html = "Your OLAM 3.0 pass is ready", _pass_html(reg)
+            else:
+                s = await _get_settings()
+                tom = bool(job.get("tomorrow"))
+                subject = "OLAM 3.0 is tomorrow – your pass" if tom else "Reminder: your OLAM 3.0 pass"
+                html = _reminder_html(reg, s, tom)
+            res = await _send_once(reg["email"], subject, html)
+            if res == "ok":
+                await db.email_queue.update_one({"_id": job["_id"]}, {"$set": {"status": "sent", "sent_at": now}})
+                if job["kind"] == "pass":
+                    await db.registrations.update_one({"id": reg["id"]}, {"$set": {"pass_email_status": "sent", "pass_email_at": now}})
+                else:
+                    await db.registrations.update_one({"id": reg["id"]}, {"$set": {"reminder_sent_for": job["key"], "reminder_sent_at": now}})
+                await asyncio.sleep(1)
+            elif res == "retry" and job.get("attempts", 0) + 1 < MAX_EMAIL_ATTEMPTS:
+                await db.email_queue.update_one(
+                    {"_id": job["_id"]},
+                    {"$set": {"status": "pending", "next_attempt_at": now + timedelta(seconds=60)}, "$inc": {"attempts": 1}},
+                )
+                logger.info("Email provider busy; pausing 60s (job %s attempt %s)", job["id"], job.get("attempts", 0) + 1)
+                await asyncio.sleep(60)
+            else:
+                await db.email_queue.update_one({"_id": job["_id"]}, {"$set": {"status": "failed"}})
+                if job["kind"] == "pass":
+                    await db.registrations.update_one({"id": reg["id"]}, {"$set": {"pass_email_status": "failed"}})
+        except Exception as e:
+            logger.warning("email worker error: %s", e)
+            await asyncio.sleep(5)
+
+
+def _reminder_html(reg: dict, settings: dict, tomorrow: bool) -> str:
+    e = htmllib.escape
+    first = e((reg["full_name"].split() or ["Guest"])[0])
+    link = f"{APP_PUBLIC_URL}/my-pass?ref={reg['reference']}"
+    when = e(settings.get("event_date") or "")
+    extra = e(settings.get("event_time_venue") or "")
+    lead = "OLAM 3.0 is <strong>tomorrow</strong>!" if tomorrow else "A friendly reminder about OLAM 3.0."
+    details = "".join(f'<p style="font-size:14px;color:#0B192C;margin:4px 0">{x}</p>' for x in [when, extra] if x)
+    return (
+        f'<table role="presentation" width="100%" style="background:#FDFBF7"><tr><td align="center" style="padding:32px 16px;font-family:Arial,sans-serif;color:#0B192C">'
+        f'<table role="presentation" width="100%" style="max-width:540px;background:#FFFFFF;border:1px solid #E5E0D8;border-radius:16px;padding:28px"><tr><td style="text-align:center">'
+        f'<p style="font-size:12px;letter-spacing:4px;color:#8A6A12;margin:0">DELTA ACADEMY PRESENTS</p>'
+        f'<h1 style="font-family:Georgia,serif;font-size:28px;margin:6px 0 2px 0">OLAM 3.0</h1>'
+        f'<p style="font-size:12px;letter-spacing:3px;color:#5C6B82;margin:0 0 20px 0">THE GRAND WEDDING</p>'
+        f'<p style="font-size:16px;margin:0 0 8px 0">Namaste {first},</p>'
+        f'<p style="font-size:14px;color:#374151;line-height:22px;margin:0 0 12px 0">{lead} Keep your QR pass ready on your phone or printed.</p>'
+        f'{details}'
+        f'<a href="{link}" style="display:inline-block;margin-top:16px;background:#D4AF37;color:#0B192C;text-decoration:none;padding:14px 28px;border-radius:999px;font-weight:bold;font-size:14px">Open My Pass</a>'
+        f'<p style="font-size:12px;color:#5C6B82;margin:20px 0 0 0">Reference: <strong>{e(reg["reference"])}</strong> &middot; open the link and confirm your email</p>'
+        f'</td></tr></table></td></tr></table>'
+    )
+
+
+async def _reminder_loop():
+    from zoneinfo import ZoneInfo
+    while True:
+        try:
+            s = await _get_settings()
+            if s.get("auto_reminder") and s.get("event_date"):
+                today = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+                event_day = datetime.strptime(s["event_date"], "%Y-%m-%d").date()
+                if (event_day - today).days == 1 and s.get("auto_reminder_done_for") != s["event_date"]:
+                    n = await _queue_reminders(tomorrow=True)  # persistent queue retries on its own
+                    await db.settings.update_one({"id": "event"}, {"$set": {"auto_reminder_done_for": s["event_date"]}})
+                    logger.info("Auto reminders queued: %s", n)
+        except Exception as e:
+            logger.warning("reminder loop error: %s", e)
+        await asyncio.sleep(900)
+
+
+async def _send_pass_email(reg: dict, pass_token: str = "") -> None:
+    """Queue the 'your pass is ready' email (delivered by the persistent email worker)."""
+    p = await db.passes.find_one({"registration_id": reg["id"]}, {"_id": 0, "version": 1})
+    key = f"v{(p or {}).get('version', 1)}"
+    if await _enqueue_email("pass", reg["id"], key):
+        await db.registrations.update_one({"id": reg["id"]}, {"$set": {"pass_email_status": "queued"}})
+    else:
+        job = await db.email_queue.find_one({"kind": "pass", "registration_id": reg["id"], "key": key}, {"_id": 0, "status": 1})
+        st = {"sent": "sent", "failed": "failed", "skipped": "failed"}.get((job or {}).get("status"), "queued")
+        await db.registrations.update_one({"id": reg["id"]}, {"$set": {"pass_email_status": st}})
+
+
+def _pass_html(reg: dict) -> str:
     # Link carries only the public reference; the student confirms their email to open the pass.
     link = f"{APP_PUBLIC_URL}/my-pass?ref={reg['reference']}"
     first_name = htmllib.escape((reg["full_name"].split() or ["Guest"])[0])
-    html = (
+    return (
         f'<table role="presentation" width="100%" style="background:#FDFBF7;padding:0;margin:0">'
         f'<tr><td align="center" style="padding:32px 16px;font-family:Arial,sans-serif;color:#0B192C">'
         f'<table role="presentation" width="100%" style="max-width:540px;background:#FFFFFF;border:1px solid #E5E0D8;border-radius:16px;padding:28px">'
@@ -625,23 +842,25 @@ async def _send_pass_email(reg: dict, pass_token: str) -> None:
         f'<p style="font-size:11px;color:#9CA3AF;margin:20px 0 0 0">Sent by {EMAIL_FROM_NAME}. We never ask for your password by email.</p>'
         f"</td></tr></table></td></tr></table>"
     )
-    payload = {
-        "to": [reg["email"]],
-        "subject": "Your OLAM 3.0 pass is ready",
-        "html": html,
-        "from_name": EMAIL_FROM_NAME,
-    }
-    try:
-        async with httpx.AsyncClient(timeout=20) as c:
-            r = await c.post(
-                f"{EMAIL_BASE_URL}/api/v1/email/send",
-                headers={"X-Email-Key": EMAIL_KEY},
-                json=payload,
-            )
-            if r.status_code >= 300:
-                logger.warning("Email send failed: %s %s", r.status_code, r.text[:300])
-    except Exception as e:
-        logger.warning("Email send error: %s", e)
+
+
+@api.post("/registrations/{rid}/resend-email")
+async def resend_pass_email(rid: str, user=Depends(require_roles("super_admin", "coordinator"))):
+    reg = await db.registrations.find_one({"id": rid}, {"_id": 0})
+    if not reg:
+        raise HTTPException(404, "Not found")
+    if user["role"] == "coordinator" and reg["branch_id"] != user.get("branch_id"):
+        raise HTTPException(403, "Not your branch")
+    if reg["status"] != "approved":
+        raise HTTPException(400, "Only approved students have a pass to email")
+    # Explicit resend: re-deliver only the CURRENT pass version's email (even if already sent).
+    p = await db.passes.find_one({"registration_id": rid}, {"_id": 0, "version": 1})
+    await db.email_queue.update_many(
+        {"kind": "pass", "registration_id": rid, "key": f"v{(p or {}).get('version', 1)}", "status": {"$in": ["sent", "failed", "skipped"]}},
+        {"$set": {"status": "pending", "attempts": 0, "next_attempt_at": datetime.now(timezone.utc)}},
+    )
+    await _send_pass_email(reg)
+    return {"ok": True}
 
 
 @api.post("/registrations", response_model=RegistrationOut)
@@ -827,6 +1046,47 @@ async def approve_registration(rid: str, user=Depends(require_roles("super_admin
         raise HTTPException(404, "Not found")
     if user["role"] == "coordinator" and reg["branch_id"] != user.get("branch_id"):
         raise HTTPException(403, "Not your branch")
+    reg2, plain = await _approve_one(reg, user)
+    await _send_pass_email(reg2, plain)
+    reg2 = await db.registrations.find_one({"id": rid}, {"_id": 0})
+    return RegistrationOut(**(await _enrich_registration(reg2)))
+
+
+class BulkApproveIn(BaseModel):
+    ids: List[str] = Field(min_length=1, max_length=200)
+
+
+async def _send_many(regs: list):
+    for r in regs:
+        await _send_pass_email(r)
+
+
+@api.get("/email/queue")
+async def email_queue_status(user=Depends(require_roles("super_admin"))):
+    agg = {d["_id"]: d["n"] async for d in db.email_queue.aggregate([{"$group": {"_id": "$status", "n": {"$sum": 1}}}])}
+    return {"pending": agg.get("pending", 0) + agg.get("sending", 0), "sent": agg.get("sent", 0), "failed": agg.get("failed", 0)}
+
+
+@api.post("/registrations/bulk-approve")
+async def bulk_approve(body: BulkApproveIn, user=Depends(require_roles("super_admin", "coordinator"))):
+    approved, skipped, emails = [], [], []
+    for rid in dict.fromkeys(body.ids):
+        reg = await db.registrations.find_one({"id": rid}, {"_id": 0})
+        if not reg:
+            skipped.append({"id": rid, "reason": "not found"}); continue
+        if user["role"] == "coordinator" and reg["branch_id"] != user.get("branch_id"):
+            skipped.append({"id": rid, "reason": "not your branch"}); continue
+        if reg["status"] != "pending":
+            skipped.append({"id": rid, "reason": f"already {reg['status']}"}); continue
+        reg2, _ = await _approve_one(reg, user)
+        approved.append(rid); emails.append(reg2)
+    await _send_many(emails)
+    await audit(user["id"], "registration.bulk_approve", None, {"count": len(approved)})
+    return {"approved": len(approved), "skipped": skipped}
+
+
+async def _approve_one(reg: dict, user: dict):
+    rid = reg["id"]
     now = datetime.now(timezone.utc)
     await db.registrations.update_one(
         {"id": rid},
@@ -844,9 +1104,7 @@ async def approve_registration(rid: str, user=Depends(require_roles("super_admin
     plain = await _issue_pass(reg)
     reg2 = await db.registrations.find_one({"id": rid}, {"_id": 0})
     await audit(user["id"], "registration.approve", rid)
-    # Fire email in the background so approval never waits on the provider.
-    asyncio.create_task(_send_pass_email(reg2, plain))
-    return RegistrationOut(**(await _enrich_registration(reg2)))
+    return reg2, plain
 
 
 @api.post("/registrations/{rid}/reject", response_model=RegistrationOut)

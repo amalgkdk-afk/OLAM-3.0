@@ -5,8 +5,7 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, fonts, radius, spacing } from "@/src/theme";
 import { GoldButton } from "@/src/components/ui";
-import { BgScreen } from "@/src/components/bg-screen";
-import { LinearGradient } from "expo-linear-gradient";
+import { BgScreen, Poster } from "@/src/components/bg-screen";
 
 export default function Landing() {
   const router = useRouter();
@@ -16,16 +15,18 @@ export default function Landing() {
     api<{ registration_open: boolean }>("/public/settings").then((s) => setOpen(s.registration_open)).catch(() => setOpen(null));
   }, []);
   return (
-    <BgScreen dim={0.15} testID="landing-screen">
+    <BgScreen dim={0} showPoster={false} testID="landing-screen">
       <View style={[styles.topRow, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable testID="landing-staff-login-btn" onPress={() => router.push("/staff/login")} style={styles.staffBtn}>
           <Text style={styles.staffBtnText}>Staff Sign In</Text>
         </Pressable>
       </View>
 
-      <View style={{ flex: 1 }} />
+      {/* Whole poster, scaled to fit the space above the panel — never cropped at the edges */}
+      <View style={styles.posterWrap}>
+        <Poster testID="landing-poster" />
+      </View>
 
-      <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.72)"]} style={{ height: 80, marginBottom: -1 }} pointerEvents="none" />
       <View style={[styles.bottom, { paddingBottom: insets.bottom + spacing.lg }]}>
         <Text style={styles.eyebrow}>DELTA ACADEMY PRESENTS</Text>
         <Text style={styles.title}>OLAM 3.0</Text>
@@ -46,7 +47,8 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: spacing.lg },
   staffBtn: { paddingHorizontal: spacing.lg, minHeight: 44, justifyContent: "center", borderRadius: radius.pill, borderWidth: 1, borderColor: "rgba(212,175,55,0.7)", backgroundColor: "rgba(0,0,0,0.55)" },
   staffBtnText: { color: colors.onSurfaceInverse, fontSize: 13, fontFamily: fonts.textMed },
-  bottom: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg, alignItems: "center", backgroundColor: "rgba(0,0,0,0.72)", width: "100%" },
+  posterWrap: { flex: 1, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, minHeight: 200 },
+  bottom: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg, alignItems: "center", backgroundColor: "rgba(0,0,0,0.78)", width: "100%", borderTopWidth: 1, borderTopColor: "rgba(212,175,55,0.4)" },
   eyebrow: { color: colors.brandPrimary, letterSpacing: 4, fontSize: 11, fontFamily: fonts.textBold, textAlign: "center", ...shadow },
   title: { color: "#FFFFFF", fontFamily: fonts.display, fontSize: 52, lineHeight: 60, marginTop: spacing.xs, textAlign: "center", ...shadow },
   tagline: { color: colors.brandPrimary, letterSpacing: 6, fontSize: 13, fontFamily: fonts.textBold, textAlign: "center", ...shadow },
