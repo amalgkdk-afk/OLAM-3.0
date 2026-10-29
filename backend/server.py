@@ -157,6 +157,12 @@ def _csv_safe(v) -> str:
     return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
 
 
+def _dedupe_key(branch_id: str, mobile: str, full_name: str) -> str:
+    digits = re.sub(r"\D", "", mobile or "")[-10:]
+    name = re.sub(r"\s+", " ", (full_name or "").strip().lower())
+    return f"{branch_id}|{digits}|{name}"
+
+
 def _ref_code() -> str:
     # Public registration reference, e.g. OLM-7F3K2A
     return "OLM-" + pysecrets.token_hex(3).upper()
@@ -242,7 +248,6 @@ class StaffUpdateIn(BaseModel):
 
 class RegistrationIn(BaseModel):
     full_name: str = Field(min_length=2, max_length=120)
-    student_code: str = Field(min_length=2, max_length=40)
     mobile: str = Field(min_length=5, max_length=20)
     email: EmailStr
     branch_id: str = Field(min_length=1)
@@ -251,11 +256,11 @@ class RegistrationIn(BaseModel):
     faculty_name: str = Field(min_length=2, max_length=120)
     confirm: bool
 
-    @field_validator("full_name", "student_code", "mobile", "branch_id", "batch", "batch_no", "faculty_name")
+    @field_validator("full_name", "mobile", "branch_id", "batch", "batch_no", "faculty_name")
     @classmethod
     def _required_text(cls, v, info):
         v = v.strip()
-        mins = {"full_name": 2, "student_code": 2, "mobile": 5, "faculty_name": 2}
+        mins = {"full_name": 2, "mobile": 5, "faculty_name": 2}
         if len(v) < mins.get(info.field_name, 1):
             raise ValueError("This field is required" if not v else "This field is too short")
         return v
@@ -272,7 +277,7 @@ class RegistrationOut(BaseModel):
     id: str
     reference: str
     full_name: str
-    student_code: str
+    student_code: Optional[str] = None
     mobile: str
     email: EmailStr
     branch_id: str
@@ -352,9 +357,19 @@ async def startup():
     await db.batches.create_index("name", unique=True)
     await db.registrations.create_index("reference", unique=True)
     await db.registrations.create_index("id", unique=True)
+    # Duplicate rule (no student ID): same branch + same mobile (last 10 digits) + same name.
+    try:
+        await db.registrations.drop_index("branch_id_1_student_code_1")
+    except Exception:
+        pass
+    async for r in db.registrations.find({"dedupe_key": {"$exists": False}}, {"_id": 1, "branch_id": 1, "mobile": 1, "full_name": 1}):
+        key = _dedupe_key(r["branch_id"], r.get("mobile", ""), r.get("full_name", ""))
+        if not await db.registrations.find_one({"dedupe_key": key}):
+            await db.registrations.update_one({"_id": r["_id"]}, {"$set": {"dedupe_key": key}})
     await db.registrations.create_index(
-        [("branch_id", 1), ("student_code", 1)], unique=True
+        "dedupe_key", unique=True, partialFilterExpression={"dedupe_key": {"$exists": True}}
     )
+    await db.registrations.create_index("mobile")
     await db.passes.create_index("token_hash", unique=True)
     await db.passes.create_index("registration_id", unique=True)
     # Unique attendance per registration = duplicate-safe check-in.
@@ -579,8 +594,8 @@ async def submit_registration(body: RegistrationIn, request: Request):
         "id": "reg-" + pysecrets.token_hex(6),
         "reference": _ref_code(),
         "full_name": body.full_name.strip(),
-        "student_code": body.student_code.strip().upper(),
         "mobile": phone,
+        "dedupe_key": _dedupe_key(body.branch_id, phone, body.full_name),
         "email": body.email.lower().strip(),
         "branch_id": body.branch_id,
         "batch": body.batch,
@@ -597,7 +612,7 @@ async def submit_registration(body: RegistrationIn, request: Request):
     try:
         await db.registrations.insert_one(reg)
     except DuplicateKeyError:
-        raise HTTPException(409, "A registration with this student ID already exists for this branch.")
+        raise HTTPException(409, "You have already registered with this name and mobile number for this branch. Use 'Retrieve my pass' to check your status.")
     await audit(None, "registration.submit", reg["id"], {"reference": reg["reference"]})
     return RegistrationOut(**reg, branch_name=branch["name"], checked_in=False)
 
@@ -683,7 +698,8 @@ async def list_registrations(
         rx = {"$regex": re.escape(q), "$options": "i"}
         filt["$or"] = [
             {"full_name": rx},
-            {"student_code": rx},
+            {"faculty_name": rx},
+            {"batch_no": rx},
             {"mobile": rx},
             {"email": rx},
             {"reference": rx},
@@ -1128,13 +1144,13 @@ async def export_regs(user=Depends(require_roles("super_admin", "coordinator")))
     docs = await db.registrations.find(filt, {"_id": 0}).to_list(5000)
     buf = io.StringIO()
     w = csv.writer(buf, quoting=csv.QUOTE_ALL)
-    w.writerow(["Reference", "Name", "Student ID", "Mobile", "Email", "Branch", "Batch", "Batch No.", "Faculty Name", "Status", "Reviewed By", "Checked In At", "Created At"])
+    w.writerow(["Reference", "Name", "Mobile", "Email", "Branch", "Batch", "Batch No.", "Faculty Name", "Status", "Reviewed By", "Checked In At", "Created At"])
     for d in docs:
         branch = await db.branches.find_one({"id": d["branch_id"]}, {"_id": 0, "name": 1})
         att = await db.attendance.find_one({"registration_id": d["id"]}, {"_id": 0})
         # Neutralise spreadsheet formulas in any user-supplied cell (CSV injection).
         w.writerow([_csv_safe(v) for v in [
-            d["reference"], d["full_name"], d["student_code"], d["mobile"], d["email"],
+            d["reference"], d["full_name"], d["mobile"], d["email"],
             branch["name"] if branch else "", d["batch"], d.get("batch_no") or "", d.get("faculty_name") or "", d["status"],
             d.get("reviewed_by_name") or "",
             att["checked_in_at"].isoformat() if att else "",

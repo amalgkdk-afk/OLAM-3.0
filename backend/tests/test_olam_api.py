@@ -30,10 +30,10 @@ def _post_rl(url, **kw):
     return r
 
 
-def _register(branch="br-1", code=None, email="delivered@resend.dev"):
-    code = code or "TEST_" + uuid.uuid4().hex[:8]
+def _register(branch="br-1", mobile=None, name="TEST Student", email="delivered@resend.dev"):
+    mobile = mobile or "9" + str(uuid.uuid4().int)[:9]
     r = _post_rl(f"{API}/registrations", json={
-        "full_name": "TEST Student", "student_code": code, "mobile": "9876543210",
+        "full_name": name, "mobile": mobile,
         "email": email, "branch_id": branch, "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True})
     assert r.status_code == 200, r.text
     return r.json()
@@ -96,18 +96,18 @@ class TestPublic:
 # --- Registration
 class TestRegistration:
     def test_submit_pending_and_duplicate(self):
-        code = "TEST_" + uuid.uuid4().hex[:8]
-        reg = _register(code=code)
+        mobile = "9" + str(uuid.uuid4().int)[:9]
+        reg = _register(mobile=mobile)
         assert reg["status"] == "pending"
         assert reg["reference"].startswith("OLM-") and len(reg["reference"]) == 10
         r = _post_rl(f"{API}/registrations", json={
-            "full_name": "TEST Dup", "student_code": code.lower(), "mobile": "9876543210",
+            "full_name": "  test   STUDENT ", "mobile": "+91 " + mobile[:5] + " " + mobile[5:],
             "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True})
         assert r.status_code == 409
 
     def test_confirm_false(self):
         r = requests.post(f"{API}/registrations", json={
-            "full_name": "TEST X", "student_code": "TEST_" + uuid.uuid4().hex[:6], "mobile": "9876543210",
+            "full_name": "TEST X", "mobile": "9" + str(uuid.uuid4().int)[:9],
             "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "B", "batch_no": "B1", "faculty_name": "TEST Fac", "confirm": False}, timeout=30)
         assert r.status_code == 422
 

@@ -15,7 +15,7 @@ export default function Register() {
   const insets = useSafeAreaInsets();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
-  const [form, setForm] = useState({ full_name: "", student_code: "", mobile: "", email: "", branch_id: "", batch: "", batch_no: "", faculty_name: "", confirm: false });
+  const [form, setForm] = useState({ full_name: "", mobile: "", email: "", branch_id: "", batch: "", batch_no: "", faculty_name: "", confirm: false });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,7 +36,7 @@ export default function Register() {
 
   async function submit() {
     setError(null);
-    const labels: Record<string, string> = { full_name: "Full Name", student_code: "Student ID", mobile: "Mobile Number", email: "Email", branch_id: "Branch", batch: "Batch", batch_no: "Batch No.", faculty_name: "Faculty Name" };
+    const labels: Record<string, string> = { full_name: "Full Name", mobile: "Mobile Number", email: "Email", branch_id: "Branch", batch: "Batch", batch_no: "Batch No.", faculty_name: "Faculty Name" };
     const missing = Object.keys(labels).filter((k) => !String((form as any)[k] ?? "").trim());
     if (missing.length) {
       setError(`Please fill in: ${missing.map((k) => labels[k]).join(", ")}.`);
@@ -64,9 +64,6 @@ export default function Register() {
         <View style={{ marginTop: spacing.xl }}>
           <Field label="Full Name">
             <TextInputPill testID="register-name-input" value={form.full_name} onChangeText={(v) => set("full_name", v)} placeholder="Enter your full name" />
-          </Field>
-          <Field label="Student ID / Admission No.">
-            <TextInputPill testID="register-studentcode-input" value={form.student_code} onChangeText={(v) => set("student_code", v)} autoCapitalize="characters" placeholder="DA123456" />
           </Field>
           <Field label="Mobile Number">
             <TextInputPill testID="register-mobile-input" value={form.mobile} onChangeText={(v) => set("mobile", v)} keyboardType="phone-pad" placeholder="+91 9876543210" />

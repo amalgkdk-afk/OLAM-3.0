@@ -7,7 +7,7 @@ import { colors, fonts, radius, spacing } from "@/src/theme";
 import { Card, GoldButton, Pill, Eyebrow, TextInputPill, Field } from "@/src/components/ui";
 import { BranchRow } from "@/src/components/branch-row";
 
-type Reg = { id: string; reference: string; full_name: string; student_code: string; mobile: string; email: string; branch_name: string; branch_id: string; batch: string; batch_no?: string; faculty_name?: string; status: "pending" | "approved" | "rejected"; rejection_reason?: string; checked_in: boolean; checked_in_at?: string; reviewed_by_name?: string };
+type Reg = { id: string; reference: string; full_name: string; student_code?: string | null; mobile: string; email: string; branch_name: string; branch_id: string; batch: string; batch_no?: string; faculty_name?: string; status: "pending" | "approved" | "rejected"; rejection_reason?: string; checked_in: boolean; checked_in_at?: string; reviewed_by_name?: string };
 type Stats = { total: number; pending: number; approved: number; rejected: number; checked_in: number; not_checked_in: number; attendance_pct: number; by_branch: { branch: string; total: number; approved: number; checked_in: number }[] };
 
 export default function Dashboard() {
@@ -61,7 +61,9 @@ export default function Dashboard() {
   const filteredRegs = regs.filter((r) => {
     if (!query) return true;
     const q = query.toLowerCase();
-    return r.full_name.toLowerCase().includes(q) || r.student_code.toLowerCase().includes(q) || r.mobile.includes(q) || r.email.toLowerCase().includes(q) || r.reference.toLowerCase().includes(q) || r.batch.toLowerCase().includes(q);
+    const qDigits = query.replace(/\D/g, "");
+    if (qDigits.length >= 4 && r.mobile.replace(/\D/g, "").includes(qDigits)) return true;
+    return r.full_name.toLowerCase().includes(q) || r.mobile.includes(q) || r.email.toLowerCase().includes(q) || r.reference.toLowerCase().includes(q) || r.batch.toLowerCase().includes(q) || (r.faculty_name || "").toLowerCase().includes(q) || (r.batch_no || "").toLowerCase().includes(q);
   });
 
   async function approve(r: Reg) {
@@ -162,7 +164,7 @@ export default function Dashboard() {
 
         {tab === "regs" && (
           <View>
-            <TextInputPill testID="dashboard-search-input" placeholder="Search name, ID, phone, ref, batch..." value={query} onChangeText={setQuery} />
+            <TextInputPill testID="dashboard-search-input" placeholder="Search name, phone, ref, batch, faculty..." value={query} onChangeText={setQuery} />
             <View style={styles.filterRow}>
               {(["all", "pending", "approved", "rejected"] as const).map((f) => (
                 <Pressable key={f} testID={`dashboard-filter-${f}`} onPress={() => setFilter(f)} style={[styles.filterChip, filter === f && styles.filterChipActive]}>
@@ -178,14 +180,14 @@ export default function Dashboard() {
                   <Pill label={r.status} tone={r.status === "approved" ? "success" : r.status === "pending" ? "warning" : "error"} />
                 </View>
                 <Text style={styles.regMeta}>{r.reference} • {r.branch_name} • {r.batch}</Text>
-                <Text style={styles.regMeta}>{r.student_code} • {r.mobile} • {r.email}</Text>
+                <Text style={styles.regMeta}>{r.mobile} • {r.email}</Text>
                 {r.batch_no || r.faculty_name ? <Text style={styles.regMeta}>Batch No. {r.batch_no || "—"} • Faculty: {r.faculty_name || "—"}</Text> : null}
                 {r.checked_in ? <Text style={[styles.regMeta, { color: colors.success }]}>Checked in {new Date(r.checked_in_at!).toLocaleString()}</Text> : null}
                 {r.rejection_reason ? <Text style={[styles.regMeta, { color: colors.error }]}>Reason: {r.rejection_reason}</Text> : null}
                 {(r.status !== "approved" || user.role === "super_admin") && (
                   <View style={{ flexDirection: "row", gap: 8, marginTop: spacing.md }}>
-                    {r.status !== "approved" && <GoldButton testID={`approve-btn-${r.id}`} label="Approve" onPress={() => approve(r)} style={{ flex: 1, height: 42 }} />}
-                    {r.status !== "rejected" && <GoldButton testID={`reject-btn-${r.id}`} label="Reject" variant="ghost" onPress={() => setRejectModal(r)} style={{ flex: 1, height: 42 }} />}
+                    {r.status !== "approved" && <GoldButton testID={`approve-btn-${r.id}`} label="Approve" onPress={() => approve(r)} style={{ flex: 1, height: 44 }} />}
+                    {r.status !== "rejected" && <GoldButton testID={`reject-btn-${r.id}`} label="Reject" variant="ghost" onPress={() => setRejectModal(r)} style={{ flex: 1, height: 44 }} />}
                   </View>
                 )}
               </Card>

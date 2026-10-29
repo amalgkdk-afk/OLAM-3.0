@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 7: Student ID / Admission No. removal + new duplicate rule. Backend: new suite test_no_student_id.py 9/9 pass (no student_code -> 200 with student_code null; sent student_code ignored and not persisted; same branch + last-10 mobile digits ('+91 xxxxx xxxxx' vs 10 digits) + case/space-insensitive name -> 409 with friendly message; sibling (same mobile, different name) -> 200; same name+mobile in other branch -> 200; 5 legacy refs listed; search by name/phone/faculty; CSV has no Student ID column but has Batch No. + Faculty Name; approve -> lookup -> scan VALID -> ALREADY_CHECKED_IN). Updated all legacy tests to stop using student_code and use unique mobiles. Full suite: 75/78 in one parallel run; the 3 failures were 429s from shared per-IP rate limits when 2 xdist workers run together. Each file passes when run on its own with -n 0. Frontend (390x844): register-studentcode-input is gone and no Student ID text remains. Fields are Full Name, Mobile, Email, Branch, Batch, Batch No., Faculty Name, confirm. Empty submit shows register-error above the submit bar. Missing confirm shows a message. A valid submit goes to the confirmation page with reference OLM-XXXXXX. A duplicate via UI (different case/spacing, +91 format) shows the 409 message. QA admin dashboard: new search placeholder, cards show no ID, all 5 legacy refs render under the All filter, search works by name, phone and faculty, Approve works. /my-pass -> pass page renders the QR. No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "startup dedupe backfill", "issue": "Legacy OLM-72857B and OLM-E04B9A have no dedupe_key because their key collides with another legacy record (same branch+mobile+name under the new rule). No crash and they list fine. Expected given legacy duplicates, but if the record that holds the key is deleted, the rule no longer covers that person until the next restart backfill."},
+      {"endpoint": "POST /api/registrations", "issue": "The unique dedupe_key covers rejected registrations too. A rejected student (e.g. OLM-8932B1) cannot re-register with the same name+mobile+branch, and the 409 tells them to use 'Retrieve my pass'. This matches the old student_code behaviour; confirm it is intended."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "staff/dashboard (Registrations)", "issues": [
+        "Client-side search on mobile is a raw substring match on the stored value. '95816 16682' (with a space) or '+91 95816...' finds nothing for a record stored as '9581616682'. Strip non-digits from both sides when the query looks like a phone number.",
+        "Approve/Reject buttons are 42px tall, under the 44px touch target (pre-existing)."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_no_student_id.py",
+    "/app/backend/tests/test_olam_api.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/iter7_no_student_id.xml"
+  ],
+  "action_items": [
+    "Optional: normalise phone queries in dashboard search (frontend filteredRegs and backend q regex) so formatted numbers match.",
+    "Optional: decide whether rejected registrations should be excluded from the duplicate rule (e.g. clear dedupe_key on reject) so rejected students can re-apply.",
+    "Optional: raise Approve/Reject buttons to height >= 44."
+  ],
+  "critical_code_review_comments": [
+    "The old unique index branch_id_1_student_code_1 is dropped at startup (verified; indexes are _id, reference, id, dedupe_key (partial unique), mobile). Without the drop, every new registration in a branch would have collided on student_code=null.",
+    "_dedupe_key uses the last 10 digits plus a lowercased, space-collapsed name. This is correct for Indian numbers but treats different international numbers that share their last 10 digits as one. Acceptable for this event.",
+    "RegistrationOut still has student_code: Optional (always null for new records) and the dashboard Reg type still declares student_code. Both are harmless leftovers that can be removed later."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_no_student_id.py (new)",
+    "/app/backend/tests/test_olam_api.py (_register uses mobile/name; duplicate test now uses same name in different case/spacing + same mobile with +91 formatting -> 409)",
+    "/app/backend/tests/test_batchno_faculty.py, test_security_fixes.py, test_branches_attendance.py, setup_ui_security.py, setup_iter5_ui.py (removed student_code, unique random mobiles)",
+    "/app/backend/tests/test_csv_export_control.py (Branch column looked up by header name; the old index was stale after the Student ID column was removed)",
+    "/app/backend/tests/test_followup_fixes.py (simulated IPs now use X-Forwarded-For to match _client_ip; ceiling test no longer depends on a counter that the success-login test resets)"
+  ],
+  "success_rate": {"backend": "100% of the new feature tests (9/9); regression 78/78 when each file runs on its own (75/78 in one parallel run due to rate-limit 429s)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None kept. All TEST data cleaned via tests/cleanup_test_data.py; only the 5 legacy registrations, qa-admin and owner remain.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the suite with a backend restart first. Registration limit is 10/min/IP and login-ip is 20/min. Running the whole tests/ dir with 2 xdist workers can give flaky 429s in test_security_fixes (its helper has no 429 retry) and test_followup_fixes lockout. Run those files with -n 0 after a restart. Legacy refs: OLM-8932B1 (rejected), OLM-E9C76C (rejected), OLM-72857B (rejected), OLM-E04B9A (pending), OLM-7A2076 (pending). The default dashboard filter is Pending, so switch to All to see every legacy record.",
+  "rca_of_issue": ""
+}

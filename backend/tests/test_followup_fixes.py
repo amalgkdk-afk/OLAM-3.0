@@ -41,7 +41,7 @@ class TestRateLimitSpoof:
     def test_lookup_rate_limit_not_bypassable(self):
         codes = []
         for i in range(17):
-            h = {"X-Forwarded-For": f"{_rand_ip()}, {_rand_ip()}", "X-Real-IP": _rand_ip()}
+            h = {"X-Forwarded-For": f"{_rand_ip()}, {_rand_ip()}", "X-Forwarded-For": _rand_ip()}
             r = requests.post(f"{API}/registrations/lookup", headers=h,
                               json={"reference": "OLM-000000", "email": "nobody@example.com"}, timeout=30)
             codes.append(r.status_code)
@@ -62,35 +62,35 @@ class TestLoginLockout:
         r = requests.post(f"{API}/auth/login", json={"email": scanner["email"], "password": SCANNER_PW}, timeout=30)
         assert r.status_code == 429, r.text
         # spoofing headers must not unlock
-        r = requests.post(f"{API}/auth/login", headers={"X-Forwarded-For": _rand_ip(), "X-Real-IP": _rand_ip()},
+        r = requests.post(f"{API}/auth/login", headers={"X-Real-IP": _rand_ip(), "X-Forwarded-For": _rand_ip()},
                           json={"email": scanner["email"], "password": SCANNER_PW}, timeout=30)
         assert r.status_code == 429, f"spoofed header unlocked: {r.status_code} {r.text}"
 
     def test_other_ip_not_locked(self, scanner):
         # Simulate a different real client IP directly against backend
-        r = requests.post(f"{INTERNAL}/auth/login", headers={"X-Real-IP": "10.99.0.1"},
+        r = requests.post(f"{INTERNAL}/auth/login", headers={"X-Forwarded-For": "10.99.0.1"},
                           json={"email": scanner["email"], "password": SCANNER_PW}, timeout=30)
         assert r.status_code == 200, r.text
         assert r.json()["user"]["must_change_password"] is True
 
     def test_per_email_ceiling_30(self, scanner):
-        # Already 5 fails from external IP. Add 25 more from distinct IPs (4 each, below per-pair limit)
-        total = 5
+        # 30 fails from distinct IPs (4 each, below per-pair limit)
+        total = 0  # other_ip_not_locked logs in successfully, which resets the per-email counter
         n = 0
         while total < 30:
             ip = f"10.98.{n}.1"
             for _ in range(4):
                 if total >= 30:
                     break
-                r = requests.post(f"{INTERNAL}/auth/login", headers={"X-Real-IP": ip},
+                r = requests.post(f"{INTERNAL}/auth/login", headers={"X-Forwarded-For": ip},
                                   json={"email": scanner["email"], "password": "wrongPass123"}, timeout=30)
                 assert r.status_code == 401, f"fail#{total+1} ip={ip}: {r.status_code}"
                 total += 1
             n += 1
-        r = requests.post(f"{INTERNAL}/auth/login", headers={"X-Real-IP": "10.97.0.1"},
+        r = requests.post(f"{INTERNAL}/auth/login", headers={"X-Forwarded-For": "10.97.0.1"},
                           json={"email": scanner["email"], "password": SCANNER_PW}, timeout=30)
         assert r.status_code == 429, f"ceiling not enforced: {r.status_code}"
 
     def test_other_email_unaffected(self):
-        r = requests.post(f"{INTERNAL}/auth/login", headers={"X-Real-IP": "10.96.0.1"}, json=QA, timeout=30)
+        r = requests.post(f"{INTERNAL}/auth/login", headers={"X-Forwarded-For": "10.96.0.1"}, json=QA, timeout=30)
         assert r.status_code == 200, r.text

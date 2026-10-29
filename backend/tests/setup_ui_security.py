@@ -11,6 +11,6 @@ r = requests.post(f"{API}/auth/login", json={"email": "qa-admin@olam.delta", "pa
 h = {"Authorization": f"Bearer {r.json()['access_token']}"}
 email = f"test_uicoord_{uuid.uuid4().hex[:6]}@olam.delta"
 s = requests.post(f"{API}/staff", headers=h, json={"email": email, "password": "TempStart#2026", "name": "TEST UI Coord", "role": "coordinator", "branch_id": "br-1"}, timeout=30)
-reg = requests.post(f"{API}/registrations", json={"full_name": "TEST UI Pass", "student_code": "TEST_" + uuid.uuid4().hex[:8], "mobile": "9876543210", "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True}, timeout=30).json()
+reg = requests.post(f"{API}/registrations", json={"full_name": "TEST UI Pass", "mobile": "9" + str(uuid.uuid4().int)[:9], "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True}, timeout=30).json()
 a = requests.post(f"{API}/registrations/{reg['id']}/approve", headers=h, timeout=30)
 print(json.dumps({"coord_email": email, "coord_status": s.status_code, "ref": reg["reference"], "approve": a.status_code}))

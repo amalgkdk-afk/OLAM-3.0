@@ -74,7 +74,8 @@ class TestCsvControl:
         rows = list(csv.reader(io.StringIO(r.text)))
         assert rows[0][0] == "Reference"
         br1 = _branch_name(admin, "br-1")
-        branches = {row[5] for row in rows[1:]}
+        bi = rows[0].index("Branch")
+        branches = {row[bi] for row in rows[1:]}
         assert branches <= {br1}, branches
 
     def test_disable_again_forbidden(self, admin, users):

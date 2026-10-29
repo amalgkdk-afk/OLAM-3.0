@@ -16,7 +16,7 @@ EMAIL = "delivered@resend.dev"
 
 
 def _payload(**over):
-    p = {"full_name": "TEST Iter6 Student", "student_code": "TEST_" + uuid.uuid4().hex[:8], "mobile": "9876543210",
+    p = {"full_name": "TEST Iter6 Student", "mobile": "9" + str(uuid.uuid4().int)[:9],
          "email": EMAIL, "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B-42",
          "faculty_name": "TEST Dr. Faculty", "confirm": True}
     p.update(over)
@@ -47,14 +47,14 @@ def created():
 
 # --- Validation: missing / whitespace-only required fields -> 422
 class TestValidation:
-    @pytest.mark.parametrize("field", ["batch_no", "faculty_name", "full_name", "student_code", "mobile", "batch"])
+    @pytest.mark.parametrize("field", ["batch_no", "faculty_name", "full_name", "mobile", "batch"])
     def test_missing_field_422(self, field):
         p = _payload()
         p.pop(field)
         r = requests.post(f"{API}/registrations", json=p, timeout=30)
         assert r.status_code == 422, f"{field}: {r.status_code} {r.text}"
 
-    @pytest.mark.parametrize("field", ["batch_no", "faculty_name", "full_name", "student_code", "mobile", "batch"])
+    @pytest.mark.parametrize("field", ["batch_no", "faculty_name", "full_name", "mobile", "batch"])
     def test_whitespace_field_422(self, field):
         r = requests.post(f"{API}/registrations", json=_payload(**{field: "      "}), timeout=30)
         assert r.status_code == 422, f"{field}: {r.status_code} {r.text}"

@@ -17,7 +17,7 @@ for role, br, name in (("coordinator", "br-1", "TEST Coordinator Bartholomew Max
     t = requests.post(f"{API}/auth/login", json={"email": email, "password": "TempStart#2026"}, timeout=30).json()["access_token"]
     c = requests.post(f"{API}/auth/change-password", headers={"Authorization": f"Bearer {t}"}, json={"current_password": "TempStart#2026", "new_password": NEW}, timeout=30)
     out[role] = {"email": email, "pw": NEW, "chpw": c.status_code}
-reg = requests.post(f"{API}/registrations", json={"full_name": "TEST UI5 Pass", "student_code": "TEST_" + uuid.uuid4().hex[:8], "mobile": "9876543210", "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True}, timeout=30).json()
+reg = requests.post(f"{API}/registrations", json={"full_name": "TEST UI5 Pass", "mobile": "9" + str(uuid.uuid4().int)[:9], "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True}, timeout=30).json()
 requests.post(f"{API}/registrations/{reg['id']}/approve", headers=h, timeout=30)
 lk = requests.post(f"{API}/registrations/lookup", json={"reference": reg["reference"], "email": "delivered@resend.dev"}, timeout=30).json()
 out["ref"] = reg["reference"]
