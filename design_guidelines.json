@@ -1,0 +1,171 @@
+{
+  "app_name": "OLAM 3.0 – THE GRAND WEDDING",
+  "personality": "3 Editorial Mobile LIGHT with 6 Glass / Luxe surfaces",
+  "personality_one_liner": "A cinematic, premium event experience blending elegant typography with sophisticated glass surfaces, anchored in navy and champagne gold.",
+  "color": {
+    "surface": "#FDFBF7",
+    "onSurface": "#0B192C",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#0B192C",
+    "surfaceTertiary": "#F3EFE9",
+    "onSurfaceTertiary": "#0B192C",
+    "surfaceInverse": "#0B192C",
+    "onSurfaceInverse": "#FDFBF7",
+    "brand": "#0B192C",
+    "onBrand": "#FDFBF7",
+    "brandPrimary": "#D4AF37",
+    "onBrandPrimary": "#0B192C",
+    "brandSecondary": "#0B192C",
+    "onBrandSecondary": "#FDFBF7",
+    "brandTertiary": "#E9DCC9",
+    "onBrandTertiary": "#0B192C",
+    "success": "#10B981",
+    "onSuccess": "#FFFFFF",
+    "warning": "#F59E0B",
+    "onWarning": "#FFFFFF",
+    "error": "#EF4444",
+    "onError": "#FFFFFF",
+    "info": "#3B82F6",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E0D8",
+    "borderStrong": "#D4AF37",
+    "divider": "#E5E0D8",
+    "muted": "#5C6B82"
+  },
+  "typography": {
+    "displayFontFamily": "Playfair Display",
+    "textFontFamily": "Inter",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Use generous vertical editorial spacing to let typography breathe. Inputs and buttons should feel substantial but not cramped. Ensure safe areas are strictly adhered to.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": 1,
+  "navigation": "stack_only",
+  "icon_set": "Feather",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use frosted glass overlays on hero cards with imagery underneath.",
+      "Use a glass sticky container for primary CTA over scrolling form content.",
+      "Use glass for the QR pass header / overlays.",
+      "Pair blur with translucent tinted base (\u226570% surface opacity) to ensure readability."
+    ],
+    "dont's": [
+      "Never blur body text regions or form fields.",
+      "Do not use glass on plain white backgrounds with no underlying image or texture.",
+      "Avoid stacking more than two glass surfaces simultaneously."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "haptics": {
+    "events": {
+      "primary_cta_press": "impactLight",
+      "form_validation_error": "notificationError",
+      "qr_scan_success": "notificationSuccess",
+      "qr_scan_warning": "notificationWarning",
+      "qr_scan_error": "notificationError"
+    }
+  },
+  "screens": [
+    {
+      "name": "Public Event Landing",
+      "purpose": "A cinematic entry point to attract and convert student registrations.",
+      "states": {
+        "loading": "Spinner overlaid on the background image",
+        "empty": "N/A",
+        "error": "Failed to load event details. Retry."
+      },
+      "layout": "Full-bleed 'hero_wedding' image under a vertical gradient scrim (transparent to \u226570% surfaceInverse/Navy). The title 'OLAM 3.0' in Playfair Display \u22653xl at the bottom-left of the view. A sticky 'Register Now' Champagne Gold (brandPrimary) CTA anchored securely above the home indicator in a glass container. Staff login accessible via a subtle transparent button at the top right."
+    },
+    {
+      "name": "Student Registration Form",
+      "purpose": "Collect attendee details smoothly with clear validation and actionable flow.",
+      "states": {
+        "loading": "Centered spinner",
+        "empty": "N/A",
+        "error": "Error submitting registration. Please check inputs."
+      },
+      "layout": "Ivory (surface) background. Playfair Display large title at the top. Single-column form layout. Inputs have 'border' and 'surfaceTertiary' backgrounds. Group related inputs into full-screen modal overlays to keep context intact. Provide immediate validation. A sticky 'Submit' CTA anchored at the bottom inside a KeyboardAvoidingView wrapped in a glass container."
+    },
+    {
+      "name": "Digital QR Pass Ticket",
+      "purpose": "A secure, hierarchical ticket meant for high-efficiency scanning and aesthetic delight.",
+      "states": {
+        "loading": "Skeleton of the ticket card",
+        "empty": "No approved pass found. 'Registration Pending Approval'.",
+        "error": "Unable to fetch ticket. Retry."
+      },
+      "layout": "Navy (surfaceInverse) background or card wrapped over 'abstract_gold_bg'. High contrast hierarchy: event timing/details above the QR code, attendee name/ID immediately below it. The QR code must be centrally aligned with a pure white background for scan hardware efficiency. Subtle geometric shapes or faint overlays for premium feel."
+    },
+    {
+      "name": "QR Scanner (Camera)",
+      "purpose": "Staff-facing high-speed QR check-in utility.",
+      "states": {
+        "loading": "Camera initializing",
+        "empty": "Ready to scan",
+        "error": "Camera permission denied"
+      },
+      "layout": "Camera viewfinder takes up the entire screen. A dynamic glass bottom-sheet slides up immediately on scan. It flashes background/border colors based on result: Success Green (#10B981) for allowed, Amber Warning (#F59E0B) for already checked in/duplicate, Red Error (#EF4444) for invalid/unapproved."
+    },
+    {
+      "name": "Admin/Coordinator Dashboard",
+      "purpose": "Manage registrations, view stats, and access reports in a modern card-grid view.",
+      "states": {
+        "loading": "Dashboard skeleton loading",
+        "empty": "No registrations yet. 'Share the event link!'.",
+        "error": "Failed to load analytics."
+      },
+      "layout": "Ivory background with 'surfaceSecondary' (Pure White) cards. Use a multi-column grid (wrap, space-between) for stat cards (e.g., Total Regs, Checked-in). Cards feature subtle shadow_tier 1. A clean data table / list layout underneath for registration management with 'Approve/Reject' buttons in a swipeable row."
+    }
+  ],
+  "images": {
+    "hero_wedding": {
+      "url": "https://images.unsplash.com/photo-1780432478362-96fac052084a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDF8MHwxfHNlYXJjaHwxfHxlbGVnYW50JTIwd2VkZGluZyUyMHJlY2VwdGlvbiUyMGNoYW1wYWduZSUyMGdvbGR8ZW58MHx8fHwxNzkzMjUwOTIyfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Stacked champagne coupes with gold rims at a formal event"
+    },
+    "abstract_gold_bg": {
+      "url": "https://images.unsplash.com/photo-1615098269543-5d83ef1092e4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGdvbGQlMjBpdm9yeXxlbnwwfHx8fDE3OTMyNTA5MjJ8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "white textile with subtle abstract gold accents"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Design Identity: Strictly adhere to the Editorial + Luxe hybrid. Use Navy (#0B192C) as the inverse/brand base, Champagne Gold (#D4AF37) for CTAs, and Ivory (#FDFBF7) for the primary surface. Note: Navy is an explicitly allowed exception per the user's brief.",
+    "Typography: Use Playfair Display exclusively for headings/titles to enforce the 'Grand Wedding' aesthetic, and Inter for all body, labels, and UI text.",
+    "Web Search Learnings: Registration forms should bundle related inputs or use full-screen modals to avoid overwhelming users. Ensure real-time immediate feedback chips/toasts for form submissions.",
+    "Web Search Learnings (QR Pass): Keep the QR code large, central, and on a solid white square to ensure hardware scan efficiency. Critical journey details sit above the QR code, supplementary details (Name, ID) sit below.",
+    "Navigation & Layout: Always pin primary CTAs (like 'Register' or 'Submit') to the bottom of the screen inside a glass-container if scrolling over content. Keep safe area clearances.",
+    "Scanner Colors: Ensure scan results utilize the provided status tokens (#10B981, #F59E0B, #EF4444, #3B82F6).",
+    "No Emojis: Strictly ban emojis across the entire UI."
+  ]
+}

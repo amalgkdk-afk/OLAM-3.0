@@ -1,0 +1,58 @@
+{
+  "summary": "First full test run of OLAM 3.0 (FastAPI + Expo web at 390x844). Backend: 18/20 pytest pass. All requested core flows pass: admin login and wrong-password 401; public branches/batches; registration with OLM-XXXXXX reference; case-insensitive duplicate student_code -> 409; confirm=false -> 422; lookup (pending -> null token, wrong email -> 404, approved -> token); coordinator branch scoping (403 on br-2, list returns only br-1, CSV only own branch); scanner gets 403 on approve, stats and export; scan VALID then ALREADY_CHECKED_IN; 5 parallel scans give exactly 1 VALID and 1 attendance row; garbage -> INVALID; manual OLM ref works; pending ref -> NOT_APPROVED; reject revokes the pass (REVOKED); re-approve issues a new token and the old one is no longer VALID; stats match the DB; pass/verify returns 200 or 404 as expected; deactivated staff token -> 401. The 2 failures are validation gaps: a coordinator can be created with no branch_id or a non-existent branch_id. Frontend: every requested flow works end to end (landing -> register -> confirmation shows reference -> status lookup pending/rejected-with-reason/approved -> View my digital pass -> QR pass card renders; invalid pass token error; staff login error and success; dashboard overview stats, registrations, approve, reject modal with reason; scanner manual input gives VALID / ALREADY CHECKED IN / NOT APPROVED / INVALID cards; settings add branch and batch; manage staff creates a coordinator; coordinator dashboard has no settings tab and shows only Branch 1). Problems found: layout overflow, touch targets under 44px, a /status deep-link clash with the Metro dev server, a missing branch name on NOT_APPROVED/REVOKED scan results, duplicate dashboard in the navigation stack, and missing testIDs. No deprecated Expo packages (expo-av / expo-barcode-scanner not used; expo-camera ~58 is used). No SafeAreaView issues (react-native-safe-area-context insets are used).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/staff", "issue": "role=coordinator is accepted with no branch_id (200). That coordinator then gets 403 on /stats and an empty list. Require branch_id for coordinators."},
+      {"endpoint": "POST /api/staff (and PATCH /api/staff/{uid})", "issue": "branch_id is not checked against db.branches, so a coordinator with branch_id='br-doesnotexist' is created (200). Return 400 for an invalid branch."},
+      {"endpoint": "POST /api/scan", "issue": "NOT_APPROVED and REVOKED responses return branch_id but not branch_name, while VALID/ALREADY_CHECKED_IN return branch_name. The scanner card therefore shows ' • Batch A' with an empty branch. Reference: server.py:660, 672, 678"},
+      {"endpoint": "GET /api/registrations", "issue": "The scanner role can list every registration in every branch, including mobile and email PII. The scanner only needs /scan and /scan/history. Consider removing scanner from require_roles on the list and detail endpoints (server.py:522, 549)."},
+      {"endpoint": "passes collection", "issue": "plain_token is stored next to token_hash (server.py:567, 575), which defeats the purpose of hashing. A DB leak exposes every valid pass. Acceptable for an MVP retrieval flow, but consider deterministic HMAC-derived tokens or encrypting plain_token."},
+      {"endpoint": "POST /api/registrations/{rid}/approve", "issue": "The comment says the email is fire-and-forget, but _send_pass_email is awaited (timeout 20s). Measured latency is about 0.5s now, but a slow email provider would block the approve response. Use BackgroundTasks or asyncio.create_task."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Status route /status", "issue": "Deep-linking or refreshing <preview>/status?ref=..&email=.. returns the plain-text 'packager-status:running'. Metro reserves /status, so the dev server intercepts it. In-app navigation works. Renaming the route (e.g. /lookup or /my-registration) avoids this in preview and Expo Go web.", "testID": "status-ref-input", "priority": "MEDIUM"},
+      {"component": "Settings add-branch/add-batch rows and Scanner manual row", "issue": "The 'Add' and 'Check' GoldButtons overflow past the card or screen right edge at 390px (Add button runs to x≈390 while the card ends at 370). The likely cause is the RN-web TextInput's intrinsic min width inside a flex:1 row. Add minWidth:0 / flexShrink:1 to the TextInputPill in these rows.", "testID": "add-branch-btn, add-batch-btn, scanner-manual-submit-btn", "priority": "MEDIUM"},
+      {"component": "Scanner -> Dashboard navigation", "issue": "The dashboard pushes /staff/scanner (dashboard.tsx:111) and the scanner's Dashboard button uses router.replace('/staff/dashboard') (scanner.tsx:81). This leaves 2 dashboard screens mounted, so duplicate testIDs resolve to 2 elements. Use router.back() when canGoBack().", "testID": "scanner-dashboard-btn", "priority": "LOW"},
+      {"component": "Register form", "issue": "The 'Please confirm your information is accurate.' error stays visible after the confirm checkbox is ticked, until the next submit.", "testID": "register-error", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Touch targets", "issues": ["landing-retrieve-btn height 16px", "landing-staff-login-btn height 33px", "dashboard-tab-* height 31px", "dashboard-filter-* chips ~26px", "'← Home' / '← Back' links and scanner 'Dashboard'/'Sign out' text links are under 44px. Add hitSlop or minHeight 44."]},
+      {"screen": "Landing", "issues": ["The gold 'DELTA ACADEMY' brand mark has very low contrast against the light hero photo.", "The hero image loads late (~3-5s), so a large empty navy area shows first. Consider a placeholder or blurhash."]},
+      {"screen": "Scanner", "issues": ["The camera frame border cuts through the 'Camera permission needed' title and body text."]},
+      {"screen": "Reject modal", "issues": ["The 'Confirm reject' label wraps onto 2 lines in the half-width button."]},
+      {"screen": "Manage staff", "issues": ["The '← Back' link and the 'STAFF MANAGEMENT' eyebrow are cramped with no vertical spacing."]},
+      {"screen": "Pass", "issues": ["The footer text ('present this pass again on return only if the gate re-admits') contradicts 'One scan per guest'."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_olam_api.py", "/app/backend/tests/cleanup_test_data.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "POST/PATCH /api/staff: require branch_id when role=coordinator and check that it exists in db.branches (return 400).",
+    "POST /api/scan: include branch_name in NOT_APPROVED and REVOKED responses (server.py:660,672,678).",
+    "Rename the /status route (Metro dev server reserves /status) and update router.push targets in confirmation.tsx and index.tsx.",
+    "Fix the inline input+button rows overflowing on mobile (settings add branch/batch, scanner manual check): give the TextInputPill minWidth:0 / flexShrink.",
+    "Raise touch targets to 44px (tabs, filter chips, text links) using minHeight or hitSlop.",
+    "Scanner Dashboard button: use router.back() instead of replace to avoid duplicate dashboard screens.",
+    "Optional: remove scanner access to GET /api/registrations (PII); run the approval email in the background; clear the register confirm error when the box is ticked.",
+    "Add missing testIDs: status '← Home', confirmation 'Back to home', manage '← Back', reject modal Cancel, staff modal Cancel, login '← Home'."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 942 lines, over the 700-line guideline. Split it into routers (auth, registrations, scan, admin).",
+    "Duplicate-safe check-in correctly relies on the unique index on attendance.registration_id plus DuplicateKeyError. Verified under 5 concurrent requests.",
+    "Revocation works: reject sets passes.active=false and re-approve rotates token_hash, so the old token becomes INVALID.",
+    "The CSV export and the registrations list run N+1 queries per row (branch + attendance lookups). Fine for small events but slow at about 5000 registrations. Use $lookup or caching.",
+    "CORS allow_origins=['*'] is acceptable since JWT is carried in the bearer header.",
+    "Scanner same-token debounce of 2.5s (scanner.tsx:48) also applies to manual input, so a staff member re-checking the same reference within 2.5s sees nothing happen."
+  ],
+  "updated_files": ["/app/backend/tests/test_olam_api.py (new)", "/app/backend/tests/cleanup_test_data.py (new)"],
+  "success_rate": {"backend": "90% (18/20; the 2 failures are validation gaps)", "frontend": "100% of requested flows functional; layout and touch-target issues reported"},
+  "seed_data_creation": "Test registrations, staff (test_*@olam.delta) and TEST branches/batches were created and then removed with tests/cleanup_test_data.py. A real registration 'Amal G Krishna' (OLM-8932B1) was left untouched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_olam_api.py -n 0 -v (pytest.ini enables xdist, so pass -n 0 for deterministic shared fixtures). Base URL comes from EXPO_PUBLIC_BACKEND_URL in /app/frontend/.env. Afterwards run python tests/cleanup_test_data.py. In the UI, reach /status through landing-retrieve-btn; do not deep-link /status (Metro intercepts it). The dashboard registrations tab defaults to the PENDING filter. Scanner manual input has a 2.5s same-value debounce. Camera scanning cannot be tested headless.",
+  "rca_of_issue": "/status deep-link: Metro dev server middleware answers GET /status with 'packager-status:running' before Expo Router's web handler. Coordinator without a branch: StaffCreateIn has no model_validator tying role=coordinator to a required, existing branch_id."
+}
