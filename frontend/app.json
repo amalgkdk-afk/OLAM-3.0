@@ -20,7 +20,9 @@
         "backgroundColor": "#000000"
       },
       "package": "com.emergent.olamweddingpass.titvje",
-      "permissions": ["android.permission.CAMERA"]
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -51,7 +53,8 @@
           "cameraPermission": "Scan guest QR passes at the event entrance",
           "recordAudioAndroid": false
         }
-      ]
+      ],
+      ["expo-audio", { "microphonePermission": false }]
     ],
     "experiments": {
       "typedRoutes": true

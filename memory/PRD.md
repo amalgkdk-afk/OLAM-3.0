@@ -65,3 +65,7 @@ Online student registration, branch coordinator approval, secure QR pass, duplic
 - Scanner: big welcome card (name + branch) on VALID scan; haptic feedback on native; guard against repeated camera callbacks; lowercase OLM- references accepted; expo-camera plugin in app.json.
 - Event Day Summary (/staff/event-summary, dashboard tab "Day Summary"): attendance by branch, batch, branch+batch; all branches listed; only approved students count as present; CSV export /api/export/event-day.csv (respects coordinator can_export). API: GET /api/reports/event-day.
 - Pending: real-device camera scan test via Expo Go.
+
+## Iteration 15
+- Welcome chime (expo-audio, assets/sounds/welcome-chime.wav) plays on every VALID scan.
+- BgScreen: poster fills full width edge-to-edge (letters never cut), blurred fill behind; landing titles over gradient fade.

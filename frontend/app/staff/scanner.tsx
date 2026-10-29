@@ -4,6 +4,9 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
+import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
+
+const CHIME = require("../../assets/sounds/welcome-chime.wav");
 import { api, clearSession, getUser, AuthUser } from "@/src/api";
 import { colors, fonts, radius, spacing } from "@/src/theme";
 import { Card, Eyebrow, Field, GoldButton, H1, Pill, TextInputPill } from "@/src/components/ui";
@@ -28,6 +31,16 @@ export default function Scanner() {
   const [busy, setBusy] = useState(false);
   const lastScanRef = useRef<{ v: string; t: number }>({ v: "", t: 0 });
   const busyRef = useRef(false);
+  const chime = useAudioPlayer(CHIME);
+
+  useEffect(() => {
+    // Let the chime play even when the iPhone is on silent.
+    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+  }, []);
+
+  function playChime() {
+    chime.seekTo(0).then(() => chime.play()).catch(() => {});
+  }
 
   useFocusEffect(useCallback(() => {
     (async () => {
@@ -61,6 +74,7 @@ export default function Scanner() {
     }
     setResult(r);
     setBusy(false);
+    if (r.result === "VALID") playChime();
     if (Platform.OS !== "web") {
       Haptics.notificationAsync(
         r.result === "VALID" ? Haptics.NotificationFeedbackType.Success :

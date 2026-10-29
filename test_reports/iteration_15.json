@@ -1,0 +1,24 @@
+{
+  "summary": "Frontend-only test at 390x844. Scanner: qa-admin login -> /staff/scanner loads with no console errors (expo-audio useAudioPlayer + welcome-chime.wav). VALID manual scan shows scanner-welcome-card (name/branch/batch/ref). I hooked HTMLMediaElement.play and confirmed the chime is played once per VALID scan (2 VALID scans = 2 plays). It is not played on ALREADY_CHECKED_IN or NOT_APPROVED scans. The wav file is served (HTTP 206) and no play() promise rejected. Duplicate scan shows scanner-result-card with ALREADY CHECKED IN and no welcome card. Pending scan shows NOT APPROVED. Landing: the poster covers the full 390x844 viewport. OLAM 3.0 / THE GRAND WEDDING are readable over the bottom gradient. Register goes to /register and Retrieve goes to /my-pass. /register, /staff/login, /my-pass and /confirmation all render with the background plus the ivory panel. No remaining references to the removed Poster/showPoster. No deprecated expo packages.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/register, /my-pass, /staff/login, /confirmation", "issues": ["Minor: at 390x844 the poster uses contentFit=contain + top, so it fills only about the top 65% of the screen. The bottom third is the heavily dimmed blurred copy, which looks nearly solid black. This is acceptable because the ivory panel covers most of it. It is mentioned only because the user asked for a 'full-screen' background."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/setup_iter14_ui.py", "/app/backend/tests/cleanup_test_data.py"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "scanner.tsx playChime: chime.seekTo(0) is async and play() is called without awaiting it. This works in testing, but on native a replay that comes quickly could start from the old position. Optional: chime.seekTo(0).then(() => chime.play()).",
+    "On web, play() is called after the awaited fetch. Chrome's transient user activation allowed it here, but strict autoplay policies (e.g. Safari) may block it. The empty catch hides this silently. This does not matter on native."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "100%"},
+  "seed_data_creation": "Created TEST Welcome Guest0/1 + TEST Pending Guest twice via setup_iter14_ui.py; all removed with cleanup_test_data.py (6 regs, 4 passes, 4 attendance, 7 scan_attempts).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "To verify the chime on web, use add_init_script to wrap HTMLMediaElement.prototype.play and read window.__plays. expo-audio web creates a detached Audio element, so none appears in the DOM. Login requires login-role-super_admin first. Use setup_iter14_ui.py for fresh approved refs and run cleanup_test_data.py afterwards."
+}

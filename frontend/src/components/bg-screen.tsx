@@ -6,14 +6,14 @@ import { colors, radius, spacing } from "@/src/theme";
 
 export const BG_IMAGE = require("../../assets/images/olam-bg.jpg");
 
-/** Event artwork background. The poster is shown whole (never cropped at the edges); a blurred
- *  copy fills any empty space so every screen size looks intentional. */
-export function BgScreen({ children, dim = 0.6, testID, showPoster = true }: { children: React.ReactNode; dim?: number; testID?: string; showPoster?: boolean }) {
+/** Event artwork filling the screen edge-to-edge: the poster fits the full width (so the headline letters are never
+ *  cut off) and a blurred copy fills any leftover space on wider screens. */
+export function BgScreen({ children, dim = 0.6, testID }: { children: React.ReactNode; dim?: number; testID?: string }) {
   return (
     <View style={styles.root} testID={testID}>
       <Image source={BG_IMAGE} style={StyleSheet.absoluteFill} contentFit="cover" blurRadius={30} />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.55)" }]} />
-      {showPoster ? <Image source={BG_IMAGE} style={StyleSheet.absoluteFill} contentFit="contain" contentPosition="top" transition={200} /> : null}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.35)" }]} />
+      <Image testID="bg-poster" source={BG_IMAGE} style={StyleSheet.absoluteFill} contentFit="contain" contentPosition="top" transition={200} />
       {dim > 0 ? (
         <LinearGradient
           colors={[`rgba(0,0,0,${dim * 0.6})`, `rgba(0,0,0,${dim})`, `rgba(0,0,0,${Math.min(dim + 0.25, 0.97)})`]}
@@ -23,11 +23,6 @@ export function BgScreen({ children, dim = 0.6, testID, showPoster = true }: { c
       {children}
     </View>
   );
-}
-
-/** Full poster, scaled to fit the given area without cropping. */
-export function Poster({ testID }: { testID?: string }) {
-  return <Image testID={testID} source={BG_IMAGE} style={{ flex: 1, width: "100%" }} contentFit="contain" contentPosition="center" transition={200} />;
 }
 
 /** Readable ivory panel that sits on top of the artwork, centered and width-capped for tablets/desktop. */
