@@ -4,7 +4,8 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, clearSession, getUser, AuthUser, getPublicUrl, getToken } from "@/src/api";
 import { colors, fonts, radius, spacing } from "@/src/theme";
-import { Card, GoldButton, H1, Pill, Eyebrow, TextInputPill, Field } from "@/src/components/ui";
+import { Card, GoldButton, Pill, Eyebrow, TextInputPill, Field } from "@/src/components/ui";
+import { BranchRow } from "@/src/components/branch-row";
 
 type Reg = { id: string; reference: string; full_name: string; student_code: string; mobile: string; email: string; branch_name: string; branch_id: string; batch: string; status: "pending" | "approved" | "rejected"; rejection_reason?: string; checked_in: boolean; checked_in_at?: string; reviewed_by_name?: string };
 type Stats = { total: number; pending: number; approved: number; rejected: number; checked_in: number; not_checked_in: number; attendance_pct: number; by_branch: { branch: string; total: number; approved: number; checked_in: number }[] };
@@ -101,18 +102,19 @@ export default function Dashboard() {
       </View>
 
       {/* Tabs */}
-      <View style={styles.tabs}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabs}>
         {([
           ["overview", "Overview"],
           ["regs", "Registrations"],
+          ["attendance", "Attendance"],
           user.role === "super_admin" && ["settings", "Settings"],
           ["scanner", "Scanner"],
         ].filter(Boolean) as any[]).map(([k, l]) => (
-          <Pressable key={k} testID={`dashboard-tab-${k}`} onPress={() => k === "scanner" ? router.push("/staff/scanner") : setTab(k)} style={[styles.tab, tab === k && styles.tabActive]}>
+          <Pressable key={k} testID={`dashboard-tab-${k}`} onPress={() => k === "scanner" ? router.push("/staff/scanner") : k === "attendance" ? router.push("/staff/attendance") : setTab(k)} style={[styles.tab, tab === k && styles.tabActive]}>
             <Text style={[styles.tabTxt, tab === k && styles.tabTxtActive]}>{l}</Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
 
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.xl }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); refresh(); }} />}>
         {loading && <ActivityIndicator color={colors.brandPrimary} />}
@@ -183,7 +185,10 @@ export default function Dashboard() {
           <View>
             <Card>
               <Text style={styles.cardTitle}>Branches</Text>
-              {branches.map((b) => <Text key={b.id} style={styles.listItem}>• {b.name} {b.active ? "" : "(inactive)"}</Text>)}
+              <Text style={styles.cardSub}>Rename a branch or switch it off. Switched-off branches disappear from the student form; existing registrations are kept.</Text>
+              <View style={{ marginTop: spacing.sm }}>
+                {branches.map((b) => <BranchRow key={b.id} branch={b} onSaved={refresh} />)}
+              </View>
               <View style={{ flexDirection: "row", gap: 8, marginTop: spacing.md }}>
                 <TextInputPill testID="new-branch-input" placeholder="New branch name" value={newBranchName} onChangeText={setNewBranchName} style={{ flex: 1, minWidth: 0 }} />
                 <GoldButton testID="add-branch-btn" label="Add" onPress={async () => { if (!newBranchName.trim()) return; try { await api("/branches", { method: "POST", body: JSON.stringify({ name: newBranchName.trim(), active: true }) }); setNewBranchName(""); refresh(); } catch (e: any) { alert(e.message); } }} style={{ height: 50 }} />
@@ -237,8 +242,9 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   hello: { fontFamily: fonts.display, fontSize: 24, color: colors.onSurface, marginTop: 4 },
   logout: { color: colors.muted, fontFamily: fonts.textMed, fontSize: 13 },
-  tabs: { flexDirection: "row", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: 8, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surfaceSecondary },
-  tab: { paddingHorizontal: 14, minHeight: 44, justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceTertiary },
+  tabsScroll: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surfaceSecondary },
+  tabs: { flexDirection: "row", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: 8, alignItems: "center" },
+  tab: { paddingHorizontal: 14, minHeight: 44, justifyContent: "center", borderRadius: radius.pill, backgroundColor: colors.surfaceTertiary, flexShrink: 0 },
   tabActive: { backgroundColor: colors.brandSecondary },
   tabTxt: { color: colors.onSurface, fontSize: 12, fontFamily: fonts.textMed },
   tabTxtActive: { color: colors.onBrandSecondary },

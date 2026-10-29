@@ -30,3 +30,10 @@ Online student registration, branch coordinator approval, secure QR pass, duplic
 - P1: Rate limiting on public lookup / login
 - P2: Profile photo upload, pagination, registration trends chart, printable pass
 - Branches renamed to KALOOR (br-1), ELAMAKKARA (br-2), MUVATTUPUZHA (br-3)
+
+## Iteration 2 (Oct 2026)
+- Branch editing in Settings: rename (409 on duplicate name) + switch on/off (inactive hidden from registration form)
+- Attendance history page /staff/attendance: branch filter (admin), check-ins (time, station, staff), refused scans log (duplicate/invalid/revoked/not approved) via new scan_attempts collection + GET /api/attendance (coordinator branch-scoped)
+- Printable pass: "Save pass as PDF" (native: expo-print + share sheet; web: print dialog → Save as PDF)
+- Batches replaced with A1, A2, B1, B2, Preparation, Passed out (seed only on empty DB); existing "Batch A" registrations moved to A1
+- Fixes: web PDF prints only the pass (hidden iframe), blank branch/batch names rejected (422), Cancel button in branch rename

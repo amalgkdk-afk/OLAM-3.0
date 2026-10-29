@@ -142,6 +142,13 @@ class BranchIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     active: bool = True
 
+    @field_validator("name")
+    @classmethod
+    def _not_blank(cls, v):
+        if not v.strip():
+            raise ValueError("Name cannot be blank")
+        return v.strip()
+
 
 class BranchOut(BaseModel):
     id: str
@@ -152,6 +159,13 @@ class BranchOut(BaseModel):
 
 class BatchIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def _not_blank(cls, v):
+        if not v.strip():
+            raise ValueError("Name cannot be blank")
+        return v.strip()
 
 
 class BatchOut(BaseModel):
@@ -290,9 +304,9 @@ async def startup():
                     "created_at": datetime.now(timezone.utc),
                 }
             )
-    # Seed default batches
-    for b in ["Batch A", "Batch B", "Batch C", "Alumni"]:
-        if not await db.batches.find_one({"name": b}):
+    # Seed default batches only on a fresh database (admin manages them afterwards)
+    if await db.batches.count_documents({}) == 0:
+        for b in ["A1", "A2", "B1", "B2", "Preparation", "Passed out"]:
             await db.batches.insert_one({"id": "bt-" + pysecrets.token_hex(3), "name": b})
 
     # Seed super admin
@@ -647,11 +661,34 @@ async def reject_registration(rid: str, body: RejectIn, user=Depends(require_rol
 # ---------------------------------------------------------------------------
 async def _scan_reg(reg: dict) -> dict:
     branch = await db.branches.find_one({"id": reg["branch_id"]}, {"_id": 0, "name": 1})
-    return {"full_name": reg["full_name"], "reference": reg["reference"], "batch": reg["batch"], "branch_name": branch["name"] if branch else None}
+    return {"full_name": reg["full_name"], "reference": reg["reference"], "batch": reg["batch"], "branch_id": reg["branch_id"], "branch_name": branch["name"] if branch else None}
 
 
 @api.post("/scan")
 async def scan(body: ScanIn, user=Depends(require_roles("super_admin", "coordinator", "scanner"))):
+    res = await _do_scan(body, user)
+    if res["result"] != "VALID":
+        # Log every refused / duplicate attempt (no raw token stored).
+        reg = res.get("registration") or {}
+        await db.scan_attempts.insert_one(
+            {
+                "id": "sa-" + pysecrets.token_hex(6),
+                "result": res["result"],
+                "reference": reg.get("reference"),
+                "full_name": reg.get("full_name"),
+                "batch": reg.get("batch"),
+                "branch_id": reg.get("branch_id"),
+                "branch_name": reg.get("branch_name"),
+                "attempted_at": datetime.now(timezone.utc),
+                "scanner_id": user["id"],
+                "scanner_name": user.get("name") or user["email"],
+                "station": body.station or "station-1",
+            }
+        )
+    return res
+
+
+async def _do_scan(body: ScanIn, user: dict) -> dict:
     raw = body.token.strip()
     if re.fullmatch(r"OLM-[0-9A-Fa-f]{6}", raw):
         # Staff manual fallback: look up by registration reference.
@@ -694,33 +731,54 @@ async def scan(body: ScanIn, user=Depends(require_roles("super_admin", "coordina
             }
         )
         await audit(user["id"], "attendance.checkin", reg["id"], {"station": body.station})
-        branch = await db.branches.find_one({"id": reg["branch_id"]}, {"_id": 0, "name": 1})
         return {
             "result": "VALID",
             "message": "Entry approved",
             "checked_in_at": now,
-            "registration": {
-                "full_name": reg["full_name"],
-                "reference": reg["reference"],
-                "batch": reg["batch"],
-                "branch_name": branch["name"] if branch else None,
-            },
+            "registration": await _scan_reg(reg),
         }
     except DuplicateKeyError:
         existing = await db.attendance.find_one({"registration_id": reg["id"]}, {"_id": 0})
-        branch = await db.branches.find_one({"id": reg["branch_id"]}, {"_id": 0, "name": 1})
         return {
             "result": "ALREADY_CHECKED_IN",
             "message": "Pass already used",
             "checked_in_at": existing["checked_in_at"] if existing else None,
             "scanner_name": existing.get("scanner_name") if existing else None,
-            "registration": {
-                "full_name": reg["full_name"],
-                "reference": reg["reference"],
-                "batch": reg["batch"],
-                "branch_name": branch["name"] if branch else None,
-            },
+            "registration": await _scan_reg(reg),
         }
+
+
+@api.get("/attendance")
+async def attendance_log(
+    branch_id: Optional[str] = None,
+    user=Depends(require_roles("super_admin", "coordinator")),
+):
+    """Full check-in log + refused/duplicate scan attempts, branch-scoped."""
+    if user["role"] == "coordinator":
+        branch_id = user["branch_id"]
+    reg_filter = {"branch_id": branch_id} if branch_id else {}
+    regs = {
+        r["id"]: r
+        for r in await db.registrations.find(reg_filter, {"_id": 0, "id": 1, "full_name": 1, "reference": 1, "batch": 1, "branch_id": 1}).to_list(5000)
+    }
+    branches = {b["id"]: b["name"] for b in await db.branches.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(100)}
+    att_filter = {"registration_id": {"$in": list(regs.keys())}} if branch_id else {}
+    checkins = []
+    for a in await db.attendance.find(att_filter, {"_id": 0}).sort("checked_in_at", -1).to_list(5000):
+        r = regs.get(a["registration_id"])
+        if not r:
+            continue
+        checkins.append({
+            "id": a["id"], "checked_in_at": a["checked_in_at"], "scanner_name": a.get("scanner_name"),
+            "station": a.get("station"), "full_name": r["full_name"], "reference": r["reference"],
+            "batch": r["batch"], "branch_name": branches.get(r["branch_id"]),
+        })
+    attempts = await db.scan_attempts.find({"branch_id": branch_id} if branch_id else {}, {"_id": 0}).sort("attempted_at", -1).to_list(2000)
+    return {
+        "checkins": checkins,
+        "attempts": attempts,
+        "duplicate_count": sum(1 for x in attempts if x["result"] == "ALREADY_CHECKED_IN"),
+    }
 
 
 @api.get("/scan/history")
@@ -814,12 +872,15 @@ async def create_branch(body: BranchIn, user=Depends(require_roles("super_admin"
 
 @api.patch("/branches/{bid}", response_model=BranchOut)
 async def update_branch(bid: str, body: BranchIn, user=Depends(require_roles("super_admin"))):
-    r = await db.branches.find_one_and_update(
-        {"id": bid},
-        {"$set": {"name": body.name.strip(), "active": body.active}},
-        return_document=ReturnDocument.AFTER,
-        projection={"_id": 0},
-    )
+    try:
+        r = await db.branches.find_one_and_update(
+            {"id": bid},
+            {"$set": {"name": body.name.strip(), "active": body.active}},
+            return_document=ReturnDocument.AFTER,
+            projection={"_id": 0},
+        )
+    except DuplicateKeyError:
+        raise HTTPException(409, "Another branch already has this name")
     if not r:
         raise HTTPException(404, "Not found")
     await audit(user["id"], "branch.update", bid)

@@ -14,6 +14,7 @@ async def main():
     print("regs", (await db.registrations.delete_many({"id": {"$in": ids}})).deleted_count)
     print("passes", (await db.passes.delete_many({"registration_id": {"$in": ids}})).deleted_count)
     print("attendance", (await db.attendance.delete_many({"registration_id": {"$in": ids}})).deleted_count)
+    print("scan_attempts", (await db.scan_attempts.delete_many({"$or": [{"registration_id": {"$in": ids}}, {"full_name": {"$regex": "^TEST"}}, {"scanner_name": {"$regex": "^TEST"}}, {"station": {"$regex": "^TEST"}}]})).deleted_count)
     print("users", (await db.users.delete_many({"email": {"$regex": "^test_"}})).deleted_count)
     print("branches", (await db.branches.delete_many({"name": {"$regex": "^TEST"}})).deleted_count)
     print("batches", (await db.batches.delete_many({"name": {"$regex": "^TEST"}})).deleted_count)

@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 2 tested branch editing, attendance history and printable passes, plus scan regression. Backend: 13/14 pytest pass (new file test_branches_attendance.py + TestScan from test_olam_api.py). Results: PATCH /branches rename works; duplicate name gives 409; unknown id gives 404; coordinator and scanner get 403; an inactive branch is hidden from /public/branches and registering with it gives 400. GET /attendance returns checkins (station, scanner_name, full_name, reference, branch_name, checked_in_at) and attempts. All 4 non-VALID results (ALREADY_CHECKED_IN, INVALID, NOT_APPROVED, REVOKED) are logged and duplicate_count is correct. A coordinator passing branch_id=br-2 still only sees br-1. Scanner gets 403. Regression: VALID then ALREADY_CHECKED_IN works, and 5 concurrent scans give exactly 1 VALID. The 1 failure: a whitespace-only branch name is accepted and saved as an empty string. Frontend (390x844): every requested flow works. The dashboard tabs scroll sideways and the attendance tab opens /staff/attendance. Branch chips filter correctly (all / br-1 / br-2). The check-ins and refused-scans toggles work and the duplicate count shows. In Settings, rename, the duplicate-name error message, switch off/on and the status text all work, and a switched-off branch disappears from /register. The pass page button is labeled 'Print / Save as PDF', calls window.print once and shows no pass-save-error. Functional gap: on web, expo-print's printAsync ignores the html option and just calls window.print(), so the custom A5 pass HTML is never used. The browser prints the live app page instead (including the Back link and the button), and the dark card background may be dropped when the browser's 'background graphics' setting is off. No deprecated Expo packages found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/branches/{id} (also POST /api/branches)", "issue": "Whitespace-only name such as '   ' passes Field(min_length=1) and is then stripped to an empty string, which gets saved (returns 200 with name ''). Validate after strip (for example a field_validator that strips the value and rejects empty) so it returns 422."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Pass page Print/Save as PDF (web)", "issue": "src/utils/print-pass.ts:51-53 calls Print.printAsync({html}) on web. expo-print 58's web build (ExponentPrint.web.js) only calls window.print(), so passHtml() is thrown away. The printed PDF is the whole app screen (Back link, gold button, footer), not the designed A5 pass, and the navy card may print blank when 'background graphics' is off. Fix: on web, write passHtml into a hidden iframe (srcdoc) and call iframe.contentWindow.print(), or open a new window with the html and print it. Another option: add @media print CSS that hides everything except the card.", "testID": "pass-save-pdf-btn", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Settings > Branches", "issues": ["Rename mode has no Cancel button. The only way out of the input is to Save (or leave the tab)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_branches_attendance.py", "/app/backend/tests/test_olam_api.py", "/app/backend/tests/cleanup_test_data.py", "/app/test_reports/pytest/pytest_iter2.xml"],
+  "action_items": [
+    "Make savePassPdf on web print the generated passHtml (hidden iframe + contentWindow.print(), or a new window) instead of relying on expo-print web, which ignores html.",
+    "Reject blank or whitespace-only branch names in BranchIn (strip, then require at least 1 char) for both POST and PATCH.",
+    "Optional: add a Cancel button to the BranchRow edit mode.",
+    "Optional: server.py is now 1004 lines. Split it into routers (auth, registrations, scan/attendance, admin)."
+  ],
+  "critical_code_review_comments": [
+    "print-pass.ts: the web path uses expo-print printAsync({html}), which is a no-op for html on web (verified in node_modules/expo-print/build/ExponentPrint.web.js).",
+    "INVALID scan attempts have no branch_id, so they only show under 'All branches' (admin) and coordinators never see them. This is acceptable but should be documented.",
+    "/attendance uses to_list caps (5000 regs/check-ins, 2000 attempts) with no pagination. This is fine for event scale.",
+    "scan/history still makes 2 DB lookups per row (N+1). This was already there before this iteration."
+  ],
+  "updated_files": ["/app/backend/tests/test_branches_attendance.py (new)", "/app/backend/tests/cleanup_test_data.py (now also deletes TEST scan_attempts)"],
+  "success_rate": {"backend": "93% (13/14)", "frontend": "100% of requested flows pass; PDF content on web is wrong (see ui_bugs)"},
+  "seed_data_creation": "TEST_ registrations, staff, check-ins and scan attempts were created and then removed with cleanup_test_data.py. Branches were restored and verified: br-1 KALOOR, br-2 ELAMAKKARA, br-3 MUVATTUPUZHA, all active. Real registrations OLM-8932B1 and OLM-E9C76C were kept. 1 non-TEST scan_attempt was left untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend/tests && pytest test_branches_attendance.py test_olam_api.py, then python cleanup_test_data.py. The test_branches_attendance module fixture restores branch names/active at teardown. Pass PDF on web: override window.print in Playwright to count calls. The frontend .env key is EXPO_PUBLIC_BACKEND_URL.",
+  "rca_of_issue": "Web PDF: expo-print's web implementation is just window.print() and ignores the html/uri options, so the custom pass HTML is never rendered on web. Repro: open /pass?t=TOKEN, override window.print, click pass-save-pdf-btn. The main window's print is called and no document containing the pass HTML is created."
+}
