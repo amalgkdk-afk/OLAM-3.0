@@ -69,3 +69,7 @@ Online student registration, branch coordinator approval, secure QR pass, duplic
 ## Iteration 15
 - Welcome chime (expo-audio, assets/sounds/welcome-chime.wav) plays on every VALID scan.
 - BgScreen: poster fills full width edge-to-edge (letters never cut), blurred fill behind; landing titles over gradient fade.
+
+## Iteration 16
+- Not Arrived list (/staff/absent, GET /api/reports/absent, /api/export/absent.csv): approved & not checked-in students by branch, search, tap-to-call; coordinator scoped.
+- Scanner: distinct refused tone (assets/sounds/refused-tone.wav) on ALREADY_CHECKED_IN / NOT_APPROVED / REVOKED / INVALID.

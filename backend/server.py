@@ -1594,6 +1594,45 @@ async def export_event_day(user=Depends(require_roles("super_admin", "coordinato
     )
 
 
+@api.get("/reports/absent")
+async def absent_report(branch_id: Optional[str] = None, user=Depends(require_roles("super_admin", "coordinator"))):
+    """Approved students who have not checked in yet, grouped by branch (coordinators: own branch only)."""
+    filt = {**_branch_filter(user), "status": "approved"}
+    if user["role"] == "super_admin" and branch_id:
+        filt["branch_id"] = branch_id
+    branches = {b["id"]: b["name"] for b in await db.branches.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(100)}
+    checked = {a["registration_id"] for a in await db.attendance.find({}, {"_id": 0, "registration_id": 1}).to_list(20000)}
+    groups: dict = {}
+    for r in await db.registrations.find(
+        filt, {"_id": 0, "id": 1, "reference": 1, "full_name": 1, "mobile": 1, "email": 1, "branch_id": 1, "batch": 1, "batch_no": 1, "faculty_name": 1}
+    ).sort("full_name", 1).to_list(20000):
+        if r["id"] in checked:
+            continue
+        bname = branches.get(r["branch_id"], "?")
+        groups.setdefault(bname, []).append({**r, "branch_name": bname})
+    out = [{"branch_name": b, "count": len(s), "students": s} for b, s in sorted(groups.items())]
+    return {"total": sum(g["count"] for g in out), "branches": out}
+
+
+@api.get("/export/absent.csv")
+async def export_absent(branch_id: Optional[str] = None, user=Depends(require_roles("super_admin", "coordinator"))):
+    if user["role"] == "coordinator" and not user.get("can_export"):
+        raise HTTPException(403, "CSV download has not been enabled for your account by the admin")
+    data = await absent_report(branch_id, user)
+    buf = io.StringIO()
+    w = csv.writer(buf, quoting=csv.QUOTE_ALL)
+    w.writerow(["Branch", "Reference", "Name", "Mobile", "Email", "Batch", "Batch No.", "Faculty Name"])
+    for g in data["branches"]:
+        for s in g["students"]:
+            w.writerow([_csv_safe(v) for v in [g["branch_name"], s["reference"], s["full_name"], s["mobile"], s["email"], s["batch"], s.get("batch_no") or "", s.get("faculty_name") or ""]])
+    await audit(user["id"], "export.absent_csv", None, {"rows": data["total"]})
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=olam-absent-students.csv"},
+    )
+
+
 # CSV export
 # ---------------------------------------------------------------------------
 @api.get("/export/registrations.csv")

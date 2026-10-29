@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 
 const CHIME = require("../../assets/sounds/welcome-chime.wav");
+const REFUSED = require("../../assets/sounds/refused-tone.wav");
 import { api, clearSession, getUser, AuthUser } from "@/src/api";
 import { colors, fonts, radius, spacing } from "@/src/theme";
 import { Card, Eyebrow, Field, GoldButton, H1, Pill, TextInputPill } from "@/src/components/ui";
@@ -32,14 +33,15 @@ export default function Scanner() {
   const lastScanRef = useRef<{ v: string; t: number }>({ v: "", t: 0 });
   const busyRef = useRef(false);
   const chime = useAudioPlayer(CHIME);
+  const refused = useAudioPlayer(REFUSED);
 
   useEffect(() => {
     // Let the chime play even when the iPhone is on silent.
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
   }, []);
 
-  function playChime() {
-    chime.seekTo(0).then(() => chime.play()).catch(() => {});
+  function playSound(p: typeof chime) {
+    p.seekTo(0).then(() => p.play()).catch(() => {});
   }
 
   useFocusEffect(useCallback(() => {
@@ -74,7 +76,8 @@ export default function Scanner() {
     }
     setResult(r);
     setBusy(false);
-    if (r.result === "VALID") playChime();
+    if (r.result === "VALID") playSound(chime);
+    else if (r.result !== "ERROR") playSound(refused);
     if (Platform.OS !== "web") {
       Haptics.notificationAsync(
         r.result === "VALID" ? Haptics.NotificationFeedbackType.Success :

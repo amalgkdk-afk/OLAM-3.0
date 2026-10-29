@@ -1,0 +1,35 @@
+{
+  "summary": "Tested the Absent (Not Arrived) report and the refused-entry tone. Backend: 12/12 pytest passed. They cover the response shape and fields, which statuses are included (only approved students not yet checked in; pending, rejected and checked-in students are left out), the admin branch_id filter, coordinator branch scoping (the branch_id param is ignored for coordinators), a student dropping off the list after a scan, scanner 403, unauthenticated 401/403, and CSV for admin, the admin branch filter, a coordinator without can_export (403), a scanner (403) and a coordinator with export (own branch only). Frontend at 375x667: the dashboard tab 'Not Arrived' opens /staff/absent. Checked the total, branch groups, student cards, call buttons (44px high), search and no-match search, the admin branch chips (All/br-1/br-2/br-3 filter correctly), the CSV download (olam-absent-students.csv), the back button and the coordinator view (own branch only, no chips, export-disabled note). A student scanned in at the gate no longer appears on the list. Scanner: refused-tone.wav played exactly once for ALREADY_CHECKED_IN (twice), NOT_APPROVED, INVALID reference and an INVALID garbage token. welcome-chime.wav played only on VALID. No console or page errors. Deprecated packages detected: none (expo-audio is used). Test data cleaned up.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/staff/absent", "issues": [
+        "When a search matches no one, the list is just blank with no message such as 'No matches'. The absent-empty text only shows when total is 0.",
+        "The branch heading shows the full count (g.count) even when search has filtered the cards, e.g. 'KALOOR • 5' above 1 card.",
+        "For admins the fixed header (title, subtitle and chips) is about 225px tall, so only about 2 cards fit on a 667px screen. Consider letting the header scroll with the list or making it smaller."
+      ]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter16_absent_report.py", "/app/backend/tests/setup_iter16_ui.py", "/app/test_reports/pytest/pytest_iter16.xml"],
+  "action_items": [
+    "Optional: add a 'No matches' empty state when a search filters out every card on /staff/absent.",
+    "Optional: show the filtered count in the branch heading while searching.",
+    "Optional: absent.tsx load(): if branch chips are tapped quickly, a slow earlier response can overwrite a newer one. Ignore stale responses with a request id or ref.",
+    "Optional: absent_report loads every attendance row into memory. Fine at this size, but a $lookup aggregation or a {registration_id: {$in: ids}} query would scale better."
+  ],
+  "critical_code_review_comments": [
+    "absent_report is reused directly by export_absent, so the CSV gets the same branch scoping. Good.",
+    "The scanner plays refused-tone for every non-VALID result except ERROR, so REVOKED also plays it. Network errors play nothing, which seems intended.",
+    "Backend log shows 429s from the email provider during test approvals. The email queue backs off and retries, so this is not caused by this feature."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter16_absent_report.py", "/app/backend/tests/setup_iter16_ui.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "TEST_-prefixed registrations and staff were created, then removed with cleanup_test_data.py.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login needs login-role-{coordinator|scanner|super_admin}; coordinators also need login-branch-{id}. For audio checks, the tool's page.add_init_script does NOT apply because the page is already loaded and client-side navigation never reloads it. Instead run page.evaluate to wrap HTMLMediaElement.prototype.play after load, then read window.__plays (the src contains welcome-chime.wav or refused-tone.wav). Registration is rate limited at 10/min; _post_rl handles it.",
+  "rca_of_issue": ""
+}

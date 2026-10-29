@@ -135,10 +135,11 @@ export default function Dashboard() {
           ["attendance", "Attendance"],
           ["faculty", "Faculty"],
           ["summary", "Day Summary"],
+          ["absent", "Not Arrived"],
           user.role === "super_admin" && ["settings", "Settings"],
           ["scanner", "Scanner"],
         ].filter(Boolean) as any[]).map(([k, l]) => (
-          <Pressable key={k} testID={`dashboard-tab-${k}`} onPress={() => k === "scanner" ? router.push("/staff/scanner") : k === "attendance" ? router.push("/staff/attendance") : k === "faculty" ? router.push("/staff/faculty-report") : k === "summary" ? router.push("/staff/event-summary") : setTab(k)} style={[styles.tab, tab === k && styles.tabActive]}>
+          <Pressable key={k} testID={`dashboard-tab-${k}`} onPress={() => k === "scanner" ? router.push("/staff/scanner") : k === "attendance" ? router.push("/staff/attendance") : k === "faculty" ? router.push("/staff/faculty-report") : k === "summary" ? router.push("/staff/event-summary") : k === "absent" ? router.push("/staff/absent") : setTab(k)} style={[styles.tab, tab === k && styles.tabActive]}>
             <Text style={[styles.tabTxt, tab === k && styles.tabTxtActive]}>{l}</Text>
           </Pressable>
         ))}
