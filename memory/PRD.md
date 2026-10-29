@@ -60,3 +60,8 @@ Online student registration, branch coordinator approval, secure QR pass, duplic
 - Email reliability: single app-wide send queue (lock), retry with backoff on 429/5xx (up to 6 tries), 1s pacing; per-student pass_email_status (queued/sent/failed) shown on dashboard with Resend button (POST /api/registrations/{id}/resend-email); reminders track reminder_failed, status shows failed/sending, UI polls progress; auto day-before reminder only marked done when none pending (retries every 15 min)
 - Email queue v2 (persistent): email_queue collection (unique kind+registration_id+key), single background worker, 60s pause on 429/5xx, up to 240 attempts (~4h+), survives restarts (sending->pending on startup; stuck queued pass emails re-queued). Pass key = pass version; reminder key = event_date. GET /api/email/queue. Reminder status adds queued/failed/sending/email_backlog. Provider limit observed ≈10 emails / 10 min.
 - Poster background: shown whole (contain) with blurred cover fill; landing shows poster above the text panel (never cropped). Resend re-queues only current pass version.
+
+## Iteration 14 (June 2026)
+- Scanner: big welcome card (name + branch) on VALID scan; haptic feedback on native; guard against repeated camera callbacks; lowercase OLM- references accepted; expo-camera plugin in app.json.
+- Event Day Summary (/staff/event-summary, dashboard tab "Day Summary"): attendance by branch, batch, branch+batch; all branches listed; only approved students count as present; CSV export /api/export/event-day.csv (respects coordinator can_export). API: GET /api/reports/event-day.
+- Pending: real-device camera scan test via Expo Go.

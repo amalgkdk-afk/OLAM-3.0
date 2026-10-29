@@ -1172,7 +1172,7 @@ async def scan(body: ScanIn, user=Depends(require_roles("super_admin", "coordina
 
 async def _do_scan(body: ScanIn, user: dict) -> dict:
     raw = body.token.strip()
-    if re.fullmatch(r"OLM-[0-9A-Fa-f]{6}", raw):
+    if re.fullmatch(r"OLM-[0-9A-F]{6}", raw, flags=re.IGNORECASE):
         # Staff manual fallback: look up by registration reference.
         r0 = await db.registrations.find_one({"reference": raw.upper()}, {"_id": 0, "id": 1, "status": 1, "full_name": 1, "reference": 1, "batch": 1, "branch_id": 1})
         if not r0:
@@ -1506,6 +1506,91 @@ async def export_faculty(branch_id: Optional[str] = None, user=Depends(require_r
         iter([buf.getvalue()]),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=olam-faculty-report.csv"},
+    )
+
+
+# EVENT DAY SUMMARY (attendance by branch and batch)
+# ---------------------------------------------------------------------------
+def _att_row(**kw) -> dict:
+    return {**kw, "registered": 0, "approved": 0, "checked_in": 0}
+
+
+async def _event_day_summary(user: dict) -> dict:
+    filt = _branch_filter(user)
+    branches = {b["id"]: b["name"] for b in await db.branches.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(100)}
+    att = {a["registration_id"]: a["checked_in_at"] for a in await db.attendance.find({}, {"_id": 0, "registration_id": 1, "checked_in_at": 1}).to_list(20000)}
+    by_branch: dict = {}
+    by_batch: dict = {}
+    by_pair: dict = {}
+    total = _att_row()
+    first = last = None
+    # Show every branch in scope, even ones with no registrations yet.
+    for bid, bname in branches.items():
+        if not filt or filt.get("branch_id") == bid:
+            by_branch.setdefault(bname, _att_row(branch_name=bname))
+    for r in await db.registrations.find(filt, {"_id": 0, "id": 1, "branch_id": 1, "batch": 1, "status": 1}).to_list(20000):
+        bname = branches.get(r["branch_id"], "?")
+        batch = r.get("batch") or "?"
+        rows = [
+            total,
+            by_branch.setdefault(bname, _att_row(branch_name=bname)),
+            by_batch.setdefault(batch, _att_row(batch=batch)),
+            by_pair.setdefault((bname, batch), _att_row(branch_name=bname, batch=batch)),
+        ]
+        approved = r["status"] == "approved"
+        present = approved and r["id"] in att
+        for row in rows:
+            row["registered"] += 1
+            if approved:
+                row["approved"] += 1
+            if present:
+                row["checked_in"] += 1
+        t = att.get(r["id"]) if present else None
+        if t:
+            first = t if first is None or t < first else first
+            last = t if last is None or t > last else last
+
+    def fin(rows):
+        for x in rows:
+            x["absent"] = max(x["approved"] - x["checked_in"], 0)
+            x["attendance_pct"] = round(x["checked_in"] / x["approved"] * 100, 1) if x["approved"] else 0.0
+        return rows
+
+    return {
+        "generated_at": datetime.now(timezone.utc),
+        "totals": fin([total])[0],
+        "first_checkin": first,
+        "last_checkin": last,
+        "by_branch": fin(sorted(by_branch.values(), key=lambda x: x["branch_name"])),
+        "by_batch": fin(sorted(by_batch.values(), key=lambda x: x["batch"])),
+        "by_branch_batch": fin(sorted(by_pair.values(), key=lambda x: (x["branch_name"], x["batch"]))),
+    }
+
+
+@api.get("/reports/event-day")
+async def event_day_report(user=Depends(require_roles("super_admin", "coordinator"))):
+    return await _event_day_summary(user)
+
+
+@api.get("/export/event-day.csv")
+async def export_event_day(user=Depends(require_roles("super_admin", "coordinator"))):
+    if user["role"] == "coordinator" and not user.get("can_export"):
+        raise HTTPException(403, "CSV download has not been enabled for your account by the admin")
+    s = await _event_day_summary(user)
+    buf = io.StringIO()
+    w = csv.writer(buf, quoting=csv.QUOTE_ALL)
+    w.writerow(["Branch", "Batch", "Registered", "Approved", "Checked In", "Absent", "Attendance %"])
+    for r in s["by_branch_batch"]:
+        w.writerow([_csv_safe(v) for v in [r["branch_name"], r["batch"], r["registered"], r["approved"], r["checked_in"], r["absent"], r["attendance_pct"]]])
+    for r in s["by_branch"]:
+        w.writerow([_csv_safe(v) for v in [r["branch_name"], "ALL BATCHES", r["registered"], r["approved"], r["checked_in"], r["absent"], r["attendance_pct"]]])
+    t = s["totals"]
+    w.writerow(["ALL BRANCHES", "ALL BATCHES", t["registered"], t["approved"], t["checked_in"], t["absent"], t["attendance_pct"]])
+    await audit(user["id"], "export.event_day_csv", None, {})
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=olam-event-day-summary.csv"},
     )
 
 

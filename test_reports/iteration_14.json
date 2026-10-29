@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 14: tested the Event Day Summary (backend and UI), the arrival welcome card on the scanner, and regressions. Backend: 15 of 16 new tests pass. GET /api/reports/event-day returns exact numbers. After 4 registrations in a unique batch (3 approved, 1 scanned), by_batch is 4/3/1/2/33.3% and the KALOOR pair is 3/2/1/1/50.0%. Totals deltas, by_branch sums, coordinator branch scoping and the scanner 403 are correct. The CSV works for admin, returns 403 for a coordinator without can_export and for the scanner, and is branch-scoped for a coordinator with can_export. The 1 failure: a reference typed in lowercase (e.g. olm-53dfd8) returns INVALID. Regression: 38 of 39 pass in the parallel run. The 1 failure is flaky: it comes from parallel shared state and passes when run serially. Frontend (375x667): the VALID manual scan shows the welcome card with name and branch (KALOOR), 'Scan next' resets the input, and ALREADY CHECKED IN, NOT APPROVED and INVALID cards render correctly. The Day Summary tab opens /staff/event-summary, totals match the API, the 3 view chips render 2/4/6 rows matching the API, CSV download works for admin, the coordinator sees the 'export disabled' note and only their branch, and back works. Bug found: re-submitting the same manual reference within 2.5s of the previous scan is silently ignored, with no result card and no feedback. No deprecated Expo packages (expo-camera is used; expo-haptics is fine).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/scan", "issue": "Manual reference matching is case-sensitive on the 'OLM-' prefix. regex r'OLM-[0-9A-Fa-f]{6}' only matches uppercase OLM, so 'olm-53dfd8' falls through to the token-hash path and returns INVALID 'QR not recognized' for a valid approved pass. raw.upper() at line 1177 shows case-insensitive matching was intended. Fix: re.fullmatch(..., raw, re.I) or normalise raw.upper() first. Reference: /app/backend/server.py:1175"},
+      {"endpoint": "GET /api/reports/event-day", "issue": "checked_in is counted for any registration with an attendance row, even if it was later rejected or revoked. approved does not count it, so attendance_pct can go above 100% and absent is clamped to 0 and hides the difference. Count checked_in only for approved registrations, or report revoked check-ins separately. Reference: /app/backend/server.py:1540"},
+      {"endpoint": "GET /api/reports/event-day", "issue": "Branches with 0 registrations (e.g. MUVATTUPUZHA) are left out of by_branch, so the admin cannot see that a branch had nobody. Consider seeding by_branch from all active branches. Reference: /app/backend/server.py:1527"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Scanner manual Check", "issue": "lastScanRef dedupe (2.5s) also applies to manual submissions, and resume() does not reset it. After 'Scan next', typing or re-checking the same reference within 2.5s does nothing: no result card, no spinner, no message. Reproduced: an immediate re-submit of OLM-C65366 showed no card within 8s, and clicking Check again after 3s worked. Fix: skip the dedupe for manual submits, or clear lastScanRef in resume(). Reference: /app/frontend/app/staff/scanner.tsx:51,73", "testID": "scanner-manual-submit-btn", "priority": "MEDIUM"},
+      {"component": "Scanner manual input", "issue": "TextInputPill has no autoCapitalize='characters' or autoCorrect={false}, so phone keyboards produce 'olm-…' or 'Olm-…'. Combined with the case-sensitive backend regex, this gives INVALID for valid passes. Reference: /app/frontend/app/staff/scanner.tsx:156", "testID": "scanner-manual-input", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/staff/scanner", "issues": ["At 375x667 the 320px camera box pushes the welcome/result card mostly below the fold. Only the eyebrow, name and branch are visible; the welcome line and the 'Scan next' button need scrolling. Consider shrinking or collapsing the camera while a result is shown, or scrolling to the card."]},
+      {"screen": "/staff/event-summary", "issues": ["A scanner deep-linking to /staff/event-summary is sent to /staff/login instead of back to /staff/scanner (minor)."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter14_event_day_summary.py",
+    "/app/backend/tests/setup_iter14_ui.py",
+    "/app/test_reports/pytest/pytest_iter14.xml",
+    "/app/test_reports/pytest/pytest_iter14_regression.xml"
+  ],
+  "action_items": [
+    "Make the manual OLM reference match case-insensitive in _do_scan (server.py:1175) and add autoCapitalize='characters' and autoCorrect={false} to scanner-manual-input.",
+    "Stop the scanner dedupe from silently swallowing manual Check taps: reset lastScanRef in resume(), or apply the 2.5s dedupe only to camera callbacks (scanner.tsx:51).",
+    "Event-day summary: count checked_in only for approved registrations (or show revoked check-ins separately) so attendance_pct cannot exceed 100%.",
+    "Optional: include zero-registration active branches in by_branch; make the result card visible without scrolling on small phones."
+  ],
+  "critical_code_review_comments": [
+    "_event_day_summary loads all attendance rows unscoped (to_list(20000)) even for coordinators. This is fine at the current scale, but it could be filtered by the coordinator's registration ids.",
+    "The summary 'both' view uses branch names with spaces inside testIDs (summary-pair-<branch>-<batch>). This works but is brittle for automation.",
+    "No deprecated Expo packages found: expo-camera CameraView is used for scanning, and expo-av and expo-barcode-scanner are not present."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter14_event_day_summary.py",
+    "/app/backend/tests/setup_iter14_ui.py"
+  ],
+  "success_rate": {"backend": "94% (15/16 new; 38/39 regression with 1 flaky, passes serially)", "frontend": "90% (all requested flows pass; 1 manual-recheck dedupe bug)"},
+  "flaky_tests": ["test_branches_attendance.py::TestAttendance::test_checkin_and_attempts_logged: fails under -n 2 because the global duplicate_count/attempts counters are changed by test_olam_api running on the other worker (1 of 2 parallel runs). It passes serially. One serial run also hit a transient ConnectTimeout."],
+  "seed_data_creation": "Created TEST_ registrations, staff and attendance during tests; all removed afterwards with cleanup_test_data.py (28 regs, 21 test users). A few INVALID scan_attempts by QA Admin for OLM-000000 remain.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the iter14 suite serially: pytest test_iter14_event_day_summary.py -n 0. It uses a unique batch per run and checks exact counts, and its totals-delta test can be skewed by parallel workers. Login UI requires choosing a role first (login-role-super_admin / login-role-coordinator + login-branch-br-1 / login-role-scanner). For welcome-card UI tests, run setup_iter14_ui.py to get fresh approved OLM refs. Camera is unavailable on web, so use scanner-manual-input.",
+  "rca_of_issue": "Silent manual re-check: submitScan() returns early when lastScanRef.v === t and less than 2.5s has passed. resume() clears busyRef but not lastScanRef, so the same reference entered right after 'Scan next' is dropped with no UI feedback. Lowercase reference INVALID: the regex r'OLM-[0-9A-Fa-f]{6}' requires an uppercase 'OLM-' prefix, so lowercase input is hashed as a QR token and is not found."
+}
