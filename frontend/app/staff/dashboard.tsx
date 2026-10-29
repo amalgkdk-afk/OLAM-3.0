@@ -42,13 +42,14 @@ export default function Dashboard() {
   async function refresh() {
     setLoading(true);
     try {
-      const [s, r, b, bt] = await Promise.all([
+      const [s, r, b, bt, me] = await Promise.all([
         api<Stats>("/stats"),
         api<Reg[]>(`/registrations${filter === "all" ? "" : "?status_=" + filter}`),
         api<any[]>("/branches"),
         api<any[]>("/batches"),
+        api<AuthUser>("/auth/me"),
       ]);
-      setStats(s); setRegs(r); setBranches(b); setBatches(bt);
+      setStats(s); setRegs(r); setBranches(b); setBatches(bt); setUser(me);
     } catch (e: any) {
       if (/401/.test(e.message || "")) router.replace("/staff/login");
     }
@@ -78,6 +79,7 @@ export default function Dashboard() {
     const url = `${getPublicUrl()}/api/export/registrations.csv`;
     if (Platform.OS === "web") {
       const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) { alert("CSV download is not enabled for your account."); return; }
       const blob = await r.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob); a.download = "olam-registrations.csv"; a.click();
@@ -96,7 +98,7 @@ export default function Dashboard() {
           <Eyebrow>OLAM 3.0 • {user.role === "super_admin" ? "ADMIN" : "COORDINATOR"}</Eyebrow>
           <Text style={styles.hello}>Hi, {user.name || user.email}</Text>
         </View>
-        <Pressable testID="dashboard-logout-btn" onPress={async () => { await clearSession(); router.replace("/staff/login"); }}>
+        <Pressable testID="dashboard-logout-btn" onPress={async () => { await clearSession(); router.replace("/staff/login"); }} style={{ minHeight: 44, minWidth: 64, justifyContent: "center", alignItems: "flex-end" }}>
           <Text style={styles.logout}>Sign out</Text>
         </Pressable>
       </View>
@@ -145,7 +147,11 @@ export default function Dashboard() {
                 ))}
               </Card>
             )}
-            <GoldButton testID="dashboard-export-btn" label="Export CSV" variant="navy" onPress={exportCsv} style={{ marginTop: spacing.lg }} />
+            {user.role === "super_admin" || user.can_export ? (
+              <GoldButton testID="dashboard-export-btn" label="Export CSV" variant="navy" onPress={exportCsv} style={{ marginTop: spacing.lg }} />
+            ) : (
+              <Text style={[styles.cardSub, { marginTop: spacing.lg, textAlign: "center" }]} testID="dashboard-export-disabled">CSV download is not enabled for your account. Ask the admin if you need it.</Text>
+            )}
           </View>
         )}
 

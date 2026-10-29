@@ -6,7 +6,7 @@ const KEY = "olam3_token";
 const USER_KEY = "olam3_user";
 
 export type Role = "super_admin" | "coordinator" | "scanner" | "student";
-export type AuthUser = { id: string; email: string; role: Role; name?: string; branch_id?: string | null };
+export type AuthUser = { id: string; email: string; role: Role; name?: string; branch_id?: string | null; can_export?: boolean };
 
 const API = process.env.EXPO_PUBLIC_BACKEND_URL as string;
 

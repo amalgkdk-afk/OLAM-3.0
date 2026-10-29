@@ -1,52 +1,51 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useRouter } from "expo-router";
-import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, fonts, radius, spacing } from "@/src/theme";
 import { GoldButton } from "@/src/components/ui";
-
-const HERO = "https://images.unsplash.com/photo-1780432478362-96fac052084a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDF8MHwxfHNlYXJjaHwxfHxlbGVnYW50JTIwd2VkZGluZyUyMHJlY2VwdGlvbiUyMGNoYW1wYWduZSUyMGdvbGR8ZW58MHx8fHwxNzkzMjUwOTIyfDA&ixlib=rb-4.1.0&q=85";
+import { BgScreen } from "@/src/components/bg-screen";
+import { LinearGradient } from "expo-linear-gradient";
 
 export default function Landing() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   return (
-    <View style={styles.wrap} testID="landing-screen">
-      <Image source={{ uri: HERO }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
-      <LinearGradient colors={["rgba(11,25,44,0.3)", "rgba(11,25,44,0.95)"]} style={StyleSheet.absoluteFill} />
-      <View style={[styles.topRow, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={styles.brandMark}>DELTA ACADEMY</Text>
+    <BgScreen dim={0.15} testID="landing-screen">
+      <View style={[styles.topRow, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable testID="landing-staff-login-btn" onPress={() => router.push("/staff/login")} style={styles.staffBtn}>
           <Text style={styles.staffBtnText}>Staff Sign In</Text>
         </Pressable>
       </View>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end", padding: spacing.xl, paddingBottom: insets.bottom + 120 }}>
-        <Text style={styles.eyebrow}>PRESENTS</Text>
+
+      <View style={{ flex: 1 }} />
+
+      <LinearGradient colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.72)"]} style={{ height: 80, marginBottom: -1 }} pointerEvents="none" />
+      <View style={[styles.bottom, { paddingBottom: insets.bottom + spacing.lg }]}>
+        <Text style={styles.eyebrow}>DELTA ACADEMY PRESENTS</Text>
         <Text style={styles.title}>OLAM 3.0</Text>
         <Text style={styles.tagline}>THE GRAND WEDDING</Text>
-        <Text style={styles.sub}>An inter-branch arts festival. Pre-register online, get your digital invitation.</Text>
-      </ScrollView>
-      <View style={[styles.ctaBar, { paddingBottom: insets.bottom + spacing.lg }]}>
-        <GoldButton testID="landing-register-btn" label="Register as a Student" onPress={() => router.push("/register")} />
-        <Pressable testID="landing-retrieve-btn" onPress={() => router.push("/my-pass")} style={{ marginTop: spacing.sm, alignItems: "center", justifyContent: "center", minHeight: 44 }}>
-          <Text style={styles.linkText}>Already registered?  Retrieve my pass</Text>
+        <Text style={styles.sub}>Inter-branch arts festival · Register online and get your digital entry pass</Text>
+        <GoldButton testID="landing-register-btn" label="Register as a Student" onPress={() => router.push("/register")} style={styles.cta} />
+        <Pressable testID="landing-retrieve-btn" onPress={() => router.push("/my-pass")} style={styles.link}>
+          <Text style={styles.linkText}>Already registered? Retrieve my pass</Text>
         </Pressable>
       </View>
-    </View>
+    </BgScreen>
   );
 }
 
+const shadow = { textShadowColor: "rgba(0,0,0,0.9)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 8 };
+
 const styles = StyleSheet.create({
-  wrap: { flex: 1, backgroundColor: colors.surfaceInverse },
-  topRow: { position: "absolute", top: 0, left: 0, right: 0, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: spacing.lg, zIndex: 2 },
-  brandMark: { color: colors.brandPrimary, letterSpacing: 4, fontFamily: fonts.textBold, fontSize: 11, textShadowColor: "rgba(0,0,0,0.8)", textShadowRadius: 6 },
-  staffBtn: { paddingHorizontal: spacing.lg, minHeight: 44, justifyContent: "center", borderRadius: radius.pill, borderWidth: 1, borderColor: "rgba(253,251,247,0.4)", backgroundColor: "rgba(11,25,44,0.4)" },
-  staffBtnText: { color: colors.onSurfaceInverse, fontSize: 12, fontFamily: fonts.textMed },
-  eyebrow: { color: colors.brandPrimary, letterSpacing: 6, fontSize: 11, fontFamily: fonts.textBold },
-  title: { color: colors.onSurfaceInverse, fontFamily: fonts.display, fontSize: 72, letterSpacing: -1, marginTop: 4 },
-  tagline: { color: colors.onSurfaceInverse, letterSpacing: 8, fontSize: 13, fontFamily: fonts.textMed, marginTop: 2, opacity: 0.85 },
-  sub: { color: colors.onSurfaceInverse, opacity: 0.75, fontSize: 15, lineHeight: 22, marginTop: spacing.lg, maxWidth: 320, fontFamily: fonts.text },
-  ctaBar: { position: "absolute", left: 0, right: 0, bottom: 0, padding: spacing.lg, backgroundColor: Platform.OS === "web" ? "rgba(11,25,44,0.6)" : "rgba(11,25,44,0.7)", borderTopWidth: 1, borderTopColor: "rgba(212,175,55,0.3)" },
-  linkText: { color: colors.brandPrimary, fontFamily: fonts.textMed, fontSize: 13 },
+  topRow: { flexDirection: "row", justifyContent: "flex-end", paddingHorizontal: spacing.lg },
+  staffBtn: { paddingHorizontal: spacing.lg, minHeight: 44, justifyContent: "center", borderRadius: radius.pill, borderWidth: 1, borderColor: "rgba(212,175,55,0.7)", backgroundColor: "rgba(0,0,0,0.55)" },
+  staffBtnText: { color: colors.onSurfaceInverse, fontSize: 13, fontFamily: fonts.textMed },
+  bottom: { paddingHorizontal: spacing.xl, paddingTop: spacing.lg, alignItems: "center", backgroundColor: "rgba(0,0,0,0.72)", width: "100%" },
+  eyebrow: { color: colors.brandPrimary, letterSpacing: 4, fontSize: 11, fontFamily: fonts.textBold, textAlign: "center", ...shadow },
+  title: { color: "#FFFFFF", fontFamily: fonts.display, fontSize: 52, lineHeight: 60, marginTop: spacing.xs, textAlign: "center", ...shadow },
+  tagline: { color: colors.brandPrimary, letterSpacing: 6, fontSize: 13, fontFamily: fonts.textBold, textAlign: "center", ...shadow },
+  sub: { color: "#FFFFFF", opacity: 0.9, fontSize: 14, lineHeight: 21, marginTop: spacing.md, maxWidth: 340, textAlign: "center", fontFamily: fonts.text, ...shadow },
+  cta: { marginTop: spacing.xl, width: "100%", maxWidth: 420 },
+  link: { minHeight: 44, justifyContent: "center", marginTop: spacing.xs },
+  linkText: { color: colors.brandPrimary, fontFamily: fonts.textMed, fontSize: 14, textAlign: "center" },
 });

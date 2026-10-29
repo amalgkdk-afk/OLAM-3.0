@@ -37,3 +37,7 @@ Online student registration, branch coordinator approval, secure QR pass, duplic
 - Printable pass: "Save pass as PDF" (native: expo-print + share sheet; web: print dialog → Save as PDF)
 - Batches replaced with A1, A2, B1, B2, Preparation, Passed out (seed only on empty DB); existing "Batch A" registrations moved to A1
 - Fixes: web PDF prints only the pass (hidden iframe), blank branch/batch names rejected (422), Cancel button in branch rename
+
+## Iteration 3 (Oct 2026)
+- User trophy artwork (assets/images/olam-bg.jpg) as background on landing, register, confirmation, my-pass, pass, staff login (BgScreen + ivory panel for readability, centered text on landing)
+- Coordinator CSV control: users.can_export (default false); admin toggles per coordinator in Staff Management; /api/export/registrations.csv returns 403 for coordinators without permission; dashboard hides Export button and shows notice

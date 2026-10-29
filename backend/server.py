@@ -130,6 +130,7 @@ class UserOut(BaseModel):
     name: Optional[str] = None
     branch_id: Optional[str] = None
     active: bool = True
+    can_export: bool = False
 
 
 class TokenOut(BaseModel):
@@ -179,6 +180,7 @@ class StaffCreateIn(BaseModel):
     name: str
     role: Literal["super_admin", "coordinator", "scanner"]
     branch_id: Optional[str] = None
+    can_export: bool = False
 
 
 class StaffUpdateIn(BaseModel):
@@ -186,6 +188,7 @@ class StaffUpdateIn(BaseModel):
     role: Optional[Literal["super_admin", "coordinator", "scanner"]] = None
     branch_id: Optional[str] = None
     active: Optional[bool] = None
+    can_export: Optional[bool] = None
     password: Optional[str] = Field(default=None, min_length=8, max_length=72)
 
 
@@ -372,6 +375,7 @@ async def login(body: LoginIn):
             "name": user.get("name"),
             "branch_id": user.get("branch_id"),
             "active": user.get("active", True),
+            "can_export": user.get("can_export", False),
         },
     }
 
@@ -933,6 +937,7 @@ async def create_staff(body: StaffCreateIn, user=Depends(require_roles("super_ad
         "name": body.name.strip(),
         "role": body.role,
         "branch_id": body.branch_id,
+        "can_export": body.can_export,
         "password_hash": _hash_password(body.password),
         "active": True,
         "created_at": datetime.now(timezone.utc),
@@ -969,6 +974,8 @@ async def update_staff(uid: str, body: StaffUpdateIn, user=Depends(require_roles
 # ---------------------------------------------------------------------------
 @api.get("/export/registrations.csv")
 async def export_regs(user=Depends(require_roles("super_admin", "coordinator"))):
+    if user["role"] == "coordinator" and not user.get("can_export"):
+        raise HTTPException(403, "CSV download has not been enabled for your account by the admin")
     filt = _branch_filter(user)
     docs = await db.registrations.find(filt, {"_id": 0}).to_list(5000)
     buf = io.StringIO()

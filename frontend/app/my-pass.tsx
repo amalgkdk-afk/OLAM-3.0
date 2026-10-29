@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
+import { BgScreen, panel } from "@/src/components/bg-screen";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/src/api";
@@ -31,7 +32,9 @@ export default function Status() {
   const token = data?.pass_token;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.surface }} contentContainerStyle={{ padding: spacing.lg, paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xl }}>
+    <BgScreen>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing.lg, paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xl }}>
+      <View style={panel}>
       <Pressable onPress={() => router.replace("/")}><Text style={styles.back}>← Home</Text></Pressable>
       <Eyebrow>RETRIEVE YOUR INVITATION</Eyebrow>
       <H1>My Registration</H1>
@@ -71,14 +74,16 @@ export default function Status() {
           )}
         </Card>
       )}
+      </View>
     </ScrollView>
+    </BgScreen>
   );
 }
 
 const styles = StyleSheet.create({
   back: { color: colors.muted, marginBottom: spacing.md, fontFamily: fonts.textMed, fontSize: 14 },
   sub: { color: colors.muted, fontSize: 14, marginTop: 8, fontFamily: fonts.text },
-  label: { fontSize: 10, letterSpacing: 3, color: colors.brandPrimary, fontFamily: fonts.textBold },
+  label: { fontSize: 10, letterSpacing: 3, color: colors.goldText, fontFamily: fonts.textBold },
   name: { fontSize: 22, fontFamily: fonts.display, color: colors.onSurface, marginTop: spacing.md },
   meta: { color: colors.muted, fontSize: 13, marginTop: 2, fontFamily: fonts.text },
   helper: { color: colors.onSurface, fontSize: 13, marginTop: spacing.md, fontFamily: fonts.text, lineHeight: 20 },

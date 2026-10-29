@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, KeyboardAvoidingView, Platform } from "react-native";
+import { BgScreen, panel } from "@/src/components/bg-screen";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { login } from "@/src/api";
@@ -25,8 +26,10 @@ export default function StaffLogin() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.surface }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingTop: insets.top + spacing.lg, flexGrow: 1 }}>
+    <BgScreen>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingTop: insets.top + spacing.lg, flexGrow: 1, justifyContent: "center" }}>
+        <View style={panel}>
         <Pressable onPress={() => router.replace("/")}><Text style={styles.back}>← Home</Text></Pressable>
         <View style={{ marginTop: spacing.xl }}>
           <Eyebrow>DELTA ACADEMY STAFF</Eyebrow>
@@ -43,8 +46,10 @@ export default function StaffLogin() {
           {err ? <Text style={styles.err} testID="login-error">{err}</Text> : null}
           <GoldButton testID="login-submit-btn" label={busy ? "Signing in..." : "Sign in"} onPress={submit} loading={busy} />
         </View>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    </BgScreen>
   );
 }
 

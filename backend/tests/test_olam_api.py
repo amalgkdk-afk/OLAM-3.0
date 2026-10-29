@@ -185,6 +185,10 @@ class TestStatsExport:
         r = requests.get(f"{API}/export/registrations.csv", headers=admin, timeout=60)
         assert r.status_code == 200 and "text/csv" in r.headers.get("content-type", "")
         assert "br-2" in r.text or "Branch" in r.text
+        # coordinators need admin-granted can_export since iteration 3
+        assert requests.get(f"{API}/export/registrations.csv", headers=staff["coordinator"], timeout=60).status_code == 403
+        me = requests.get(f"{API}/auth/me", headers=staff["coordinator"], timeout=30).json()
+        assert requests.patch(f"{API}/staff/{me['id']}", headers=admin, json={"can_export": True}, timeout=30).status_code == 200
         c = requests.get(f"{API}/export/registrations.csv", headers=staff["coordinator"], timeout=60)
         assert c.status_code == 200
         lines = c.text.strip().splitlines()

@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: colors.divider, marginVertical: spacing.md },
   h1: { fontSize: 32, fontFamily: fonts.display, color: colors.onSurface, letterSpacing: -0.5 },
   h2: { fontSize: 22, fontFamily: fonts.display, color: colors.onSurface },
-  eyebrow: { fontSize: 10, letterSpacing: 4, color: colors.brandPrimary, fontFamily: fonts.textBold, textTransform: "uppercase" },
+  eyebrow: { fontSize: 10, letterSpacing: 4, color: colors.goldText, fontFamily: fonts.textBold, textTransform: "uppercase" },
 });
 
 export { colors, spacing, radius, fonts };

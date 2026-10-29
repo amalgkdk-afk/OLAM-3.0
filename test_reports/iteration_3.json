@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 3: Coordinator CSV control + trophy-poster backgrounds. Backend: 39/39 pass (new test_csv_export_control.py 9/9; updated outdated test_export_scoping to new can_export rule; 1 flaky attendance test passes serially). can_export defaults false, coordinator export 403 -> PATCH true -> 200 with only KALOOR(br-1) rows -> PATCH false -> 403; /auth/me returns can_export; super admin always 200; scanner 403 even with can_export=true; coordinator cannot PATCH self (403). Frontend at 390x844: landing trophy background, centered readable OLAM 3.0, no overlapping buttons (also OK at 375x667); register/my-pass/confirmation/staff-login show ivory panel over artwork, no horizontal overflow (scrollWidth=390); pass page readable on dark bg. Staff Management CSV toggle flips Allowed/Not allowed and persists after reload. Coordinator dashboard shows dashboard-export-btn when allowed (real download, 30 lines, only KALOOR) and dashboard-export-disabled text when not (updates on reload via /auth/me). Regression: UI registration -> confirmation (OLM-C71F44) and admin/coordinator login -> dashboard work. No deprecated Expo packages found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "staff/dashboard", "issues": ["dashboard-logout-btn ('Sign out') touch target is 50x16px, below the 44x44 minimum"]},
+      {"screen": "register/my-pass/confirmation/staff-login panels", "issues": ["Gold (#D4AF37-ish) eyebrow labels (e.g. 'EVENT REGISTRATION', 'REGISTRATION RECEIVED', 'STATUS') on ivory panel have low contrast (~2:1); consider a darker gold for text on light surfaces"]},
+      {"screen": "landing", "issues": ["Bottom dark text block (rgba(0,0,0,0.72)) starts with a hard horizontal edge across the trophy pedestal; a gradient fade would look smoother (cosmetic)"]},
+      {"screen": "register", "issues": ["Sticky Submit footer covers chips scrolled to the bottom edge (seen when the batch row is just above the footer); real users can scroll, but adding paddingBottom equal to footer height in the ScrollView content avoids it"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_csv_export_control.py", "/app/backend/tests/test_olam_api.py", "/app/backend/tests/test_branches_attendance.py", "/app/backend/tests/set_ui_coord_export.py", "/app/test_reports/pytest/pytest_iter3.xml"],
+  "action_items": [
+    "Increase dashboard-logout-btn hit area to >=44px (padding/hitSlop)",
+    "Optional: darker gold for small eyebrow text on ivory panels for contrast",
+    "Optional: staff CSV toggle — add accessibilityRole='switch' + accessibilityState, show an error toast if PATCH fails (currently it silently refreshes)"
+  ],
+  "critical_code_review_comments": [
+    "manage.tsx toggleExport uses the stale 's' closure; fast double-taps send the same value twice. Low impact",
+    "No DELETE /api/staff endpoint; test staff can only be deactivated via the API (cleanup was done through cleanup_test_data.py on the DB)",
+    "export_regs runs 2 DB queries per row (branch + attendance); fine at this scale but would be slow with thousands of rows"
+  ],
+  "updated_files": ["/app/backend/tests/test_csv_export_control.py (new)", "/app/backend/tests/set_ui_coord_export.py (new helper)", "/app/backend/tests/test_olam_api.py (test_export_scoping now grants can_export before coordinator export)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "flaky_tests": ["test_branches_attendance.py::TestAttendance::test_checkin_and_attempts_logged fails ~1/1 under xdist (duplicate_count global stat raced by concurrent scans in test_olam_api), passes with -n 0"],
+  "seed_data_creation": "Created TEST_ coordinators/scanners/registrations during tests; all removed via cleanup_test_data.py. Real registrations OLM-8932B1, OLM-E9C76C and branches KALOOR/ELAMAKKARA/MUVATTUPUZHA preserved.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Coordinator CSV export needs can_export=true (PATCH /api/staff/{id}). Old tests that expect coordinator export 200 must grant it first. Run cleanup: python /app/backend/tests/cleanup_test_data.py. In the register form, scroll chips to center before clicking (sticky footer). The browser tool rewrites screenshot paths built with f-strings, so use literal paths."
+}

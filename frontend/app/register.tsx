@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, StyleSheet, Pressable, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Pressable, KeyboardAvoidingView, Platform } from "react-native";
+import { BgScreen, panel } from "@/src/components/bg-screen";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "@/src/api";
@@ -49,8 +50,10 @@ export default function Register() {
   }
 
   return (
+    <BgScreen>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingTop: insets.top + spacing.lg, paddingBottom: 160 }} keyboardShouldPersistTaps="handled">
+        <View style={panel}>
         <Pressable testID="register-back-btn" onPress={() => router.back()} style={styles.back}><Text style={styles.backTxt}>← Back</Text></Pressable>
         <Eyebrow>EVENT REGISTRATION</Eyebrow>
         <H1>Your invitation awaits</H1>
@@ -93,11 +96,13 @@ export default function Register() {
           </Pressable>
           {error ? <Text style={styles.err} testID="register-error">{error}</Text> : null}
         </View>
+        </View>
       </ScrollView>
       <View style={[styles.ctaBar, { paddingBottom: insets.bottom + spacing.md }]}>
         <GoldButton testID="register-submit-btn" label={submitting ? "Submitting..." : "Submit Registration"} onPress={submit} loading={submitting} />
       </View>
     </KeyboardAvoidingView>
+    </BgScreen>
   );
 }
 
@@ -115,5 +120,5 @@ const styles = StyleSheet.create({
   cbOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   confirmTxt: { color: colors.onSurface, flex: 1, fontSize: 13, lineHeight: 19, fontFamily: fonts.text },
   err: { color: colors.error, marginTop: spacing.md, fontFamily: fonts.textMed, fontSize: 13 },
-  ctaBar: { position: "absolute", left: 0, right: 0, bottom: 0, padding: spacing.lg, backgroundColor: colors.surfaceSecondary, borderTopWidth: 1, borderTopColor: colors.border },
+  ctaBar: { position: "absolute", left: 0, right: 0, bottom: 0, padding: spacing.lg, backgroundColor: "rgba(0,0,0,0.85)", borderTopWidth: 1, borderTopColor: "rgba(212,175,55,0.5)" },
 });

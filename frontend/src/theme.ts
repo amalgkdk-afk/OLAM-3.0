@@ -35,6 +35,7 @@ const light = {
   border: "#E5E0D8",
   borderStrong: "#D4AF37",
   divider: "#E5E0D8",
+  goldText: "#8A6A12", // darker gold for small labels on ivory (AA contrast)
 };
 
 export type ThemeColors = typeof light;

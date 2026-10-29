@@ -7,6 +7,7 @@ import { colors, fonts, spacing } from "@/src/theme";
 import { QRPassCard } from "@/src/components/qr-pass";
 import { GoldButton } from "@/src/components/ui";
 import { savePassPdf } from "@/src/utils/print-pass";
+import { BgScreen } from "@/src/components/bg-screen";
 
 export default function PassScreen() {
   const { t } = useLocalSearchParams<{ t: string; ref: string }>();
@@ -27,7 +28,8 @@ export default function PassScreen() {
   }, [t]);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.surface }} contentContainerStyle={{ padding: spacing.lg, paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xl }}>
+    <BgScreen>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing.lg, paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.xl }}>
       <Pressable testID="pass-back-btn" onPress={() => (router.canGoBack() ? router.back() : router.replace("/my-pass"))} style={{ minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }}><Text style={styles.back}>← Back</Text></Pressable>
       {!data && !err && <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing["3xl"] }} />}
       {err && <Text style={styles.err} testID="pass-error">{err}</Text>}
@@ -51,11 +53,12 @@ export default function PassScreen() {
         </View>
       )}
     </ScrollView>
+    </BgScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  back: { color: colors.muted, marginBottom: spacing.md, fontFamily: fonts.textMed, fontSize: 14 },
-  err: { color: colors.error, textAlign: "center", marginTop: spacing["3xl"], fontFamily: fonts.textMed },
-  footer: { color: colors.muted, fontSize: 12, textAlign: "center", marginTop: spacing.lg, fontFamily: fonts.text, lineHeight: 18 },
+  back: { color: "#FFFFFF", marginBottom: spacing.md, fontFamily: fonts.textMed, fontSize: 14 },
+  err: { color: "#FFFFFF", backgroundColor: colors.error, padding: spacing.md, borderRadius: 12, overflow: "hidden", textAlign: "center", marginTop: spacing["3xl"], fontFamily: fonts.textMed },
+  footer: { color: "#FFFFFF", opacity: 0.85, fontSize: 12, textAlign: "center", marginTop: spacing.lg, fontFamily: fonts.text, lineHeight: 18 },
 });

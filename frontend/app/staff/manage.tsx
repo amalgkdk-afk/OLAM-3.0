@@ -6,7 +6,7 @@ import { api, getUser } from "@/src/api";
 import { colors, fonts, radius, spacing } from "@/src/theme";
 import { Card, Eyebrow, Field, GoldButton, H1, Pill, TextInputPill } from "@/src/components/ui";
 
-type Staff = { id: string; email: string; name?: string; role: "super_admin" | "coordinator" | "scanner"; branch_id?: string | null; active: boolean };
+type Staff = { id: string; email: string; name?: string; role: "super_admin" | "coordinator" | "scanner"; branch_id?: string | null; active: boolean; can_export?: boolean };
 type Branch = { id: string; name: string };
 
 export default function ManageStaff() {
@@ -32,6 +32,12 @@ export default function ManageStaff() {
       refresh();
     })();
   }, []);
+
+  async function toggleExport(s: Staff) {
+    setStaff((list) => list.map((x) => (x.id === s.id ? { ...x, can_export: !s.can_export } : x)));
+    try { await api(`/staff/${s.id}`, { method: "PATCH", body: JSON.stringify({ can_export: !s.can_export }) }); }
+    catch { refresh(); }
+  }
 
   async function createStaff() {
     setErr(null);
@@ -65,6 +71,21 @@ export default function ManageStaff() {
               <Text style={styles.meta}>{s.email}</Text>
               {branch ? <Text style={styles.meta}>Branch: {branch.name}</Text> : null}
               <Text style={[styles.meta, { color: s.active ? colors.success : colors.error }]}>{s.active ? "Active" : "Inactive"}</Text>
+              {s.role === "coordinator" && (
+                <Pressable
+                  testID={`staff-csv-toggle-${s.id}`}
+                  onPress={() => toggleExport(s)}
+                  style={[styles.csvRow, { borderColor: s.can_export ? colors.success : colors.border }]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.csvTitle}>CSV download</Text>
+                    <Text style={styles.meta}>{s.can_export ? "Allowed — can download their branch list" : "Not allowed"}</Text>
+                  </View>
+                  <View style={[styles.switch, s.can_export && styles.switchOn]}>
+                    <View style={[styles.knob, s.can_export && styles.knobOn]} />
+                  </View>
+                </Pressable>
+              )}
             </Card>
           );
         })}
@@ -123,4 +144,10 @@ const styles = StyleSheet.create({
   roleChipTxt: { fontSize: 12, color: colors.onSurface, fontFamily: fonts.textMed, textTransform: "capitalize" },
   roleChipTxtActive: { color: colors.onBrandSecondary },
   err: { color: colors.error, marginBottom: 8, fontFamily: fonts.textMed },
+  csvRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, backgroundColor: colors.surfaceTertiary, minHeight: 56 },
+  csvTitle: { fontFamily: fonts.textBold, fontSize: 13, color: colors.onSurface },
+  switch: { width: 48, height: 28, borderRadius: 14, backgroundColor: colors.border, padding: 3, justifyContent: "center" },
+  switchOn: { backgroundColor: colors.success },
+  knob: { width: 22, height: 22, borderRadius: 11, backgroundColor: "#FFFFFF" },
+  knobOn: { alignSelf: "flex-end" },
 });
