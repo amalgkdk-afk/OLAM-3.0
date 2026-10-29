@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, clearSession, getUser, AuthUser, getPublicUrl, getToken } from "@/src/api";
 import { colors, fonts, radius, spacing } from "@/src/theme";
 import { Card, GoldButton, Pill, Eyebrow, TextInputPill, Field } from "@/src/components/ui";
+import { downloadCsv } from "@/src/utils/csv";
 import { BranchRow } from "@/src/components/branch-row";
 
 type Reg = { id: string; reference: string; full_name: string; student_code?: string | null; mobile: string; email: string; branch_name: string; branch_id: string; batch: string; batch_no?: string; faculty_name?: string; status: "pending" | "approved" | "rejected"; rejection_reason?: string; checked_in: boolean; checked_in_at?: string; reviewed_by_name?: string };
@@ -77,17 +78,8 @@ export default function Dashboard() {
   }
 
   async function exportCsv() {
-    const token = await getToken();
-    const url = `${getPublicUrl()}/api/export/registrations.csv`;
-    if (Platform.OS === "web") {
-      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (!r.ok) { alert("CSV download is not enabled for your account."); return; }
-      const blob = await r.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob); a.download = "olam-registrations.csv"; a.click();
-    } else {
-      alert("CSV export is available from the web dashboard.");
-    }
+    const m = await downloadCsv("/export/registrations.csv", "olam-registrations.csv");
+    if (m) alert(m);
   }
 
   if (!user) return <View style={{ flex: 1, backgroundColor: colors.surface }} />;
@@ -116,10 +108,11 @@ export default function Dashboard() {
           ["overview", "Overview"],
           ["regs", "Registrations"],
           ["attendance", "Attendance"],
+          ["faculty", "Faculty"],
           user.role === "super_admin" && ["settings", "Settings"],
           ["scanner", "Scanner"],
         ].filter(Boolean) as any[]).map(([k, l]) => (
-          <Pressable key={k} testID={`dashboard-tab-${k}`} onPress={() => k === "scanner" ? router.push("/staff/scanner") : k === "attendance" ? router.push("/staff/attendance") : setTab(k)} style={[styles.tab, tab === k && styles.tabActive]}>
+          <Pressable key={k} testID={`dashboard-tab-${k}`} onPress={() => k === "scanner" ? router.push("/staff/scanner") : k === "attendance" ? router.push("/staff/attendance") : k === "faculty" ? router.push("/staff/faculty-report") : setTab(k)} style={[styles.tab, tab === k && styles.tabActive]}>
             <Text style={[styles.tabTxt, tab === k && styles.tabTxtActive]}>{l}</Text>
           </Pressable>
         ))}
@@ -216,6 +209,9 @@ export default function Dashboard() {
                 <GoldButton testID="add-batch-btn" label="Add" onPress={async () => { if (!newBatchName.trim()) return; try { await api("/batches", { method: "POST", body: JSON.stringify({ name: newBatchName.trim() }) }); setNewBatchName(""); refresh(); } catch (e: any) { alert(e.message); } }} style={{ height: 50 }} />
               </View>
             </Card>
+            <Pressable testID="event-settings-btn" onPress={() => router.push("/staff/event-settings")} style={{ marginTop: spacing.lg }}>
+              <Card><Text style={styles.cardTitle}>Event Settings →</Text><Text style={styles.cardSub}>Open or close registration, edit the privacy notice</Text></Card>
+            </Pressable>
             <Pressable testID="manage-staff-btn" onPress={() => router.push("/staff/manage")} style={{ marginTop: spacing.lg }}>
               <Card><Text style={styles.cardTitle}>Manage Staff Accounts →</Text><Text style={styles.cardSub}>Create coordinators and scanners</Text></Card>
             </Pressable>

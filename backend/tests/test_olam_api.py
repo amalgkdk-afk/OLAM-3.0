@@ -34,7 +34,7 @@ def _register(branch="br-1", mobile=None, name="TEST Student", email="delivered@
     mobile = mobile or "9" + str(uuid.uuid4().int)[:9]
     r = _post_rl(f"{API}/registrations", json={
         "full_name": name, "mobile": mobile,
-        "email": email, "branch_id": branch, "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True})
+        "email": email, "branch_id": branch, "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True, "privacy_accepted": True})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -102,13 +102,13 @@ class TestRegistration:
         assert reg["reference"].startswith("OLM-") and len(reg["reference"]) == 10
         r = _post_rl(f"{API}/registrations", json={
             "full_name": "  test   STUDENT ", "mobile": "+91 " + mobile[:5] + " " + mobile[5:],
-            "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True})
+            "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True, "privacy_accepted": True})
         assert r.status_code == 409
 
     def test_confirm_false(self):
         r = requests.post(f"{API}/registrations", json={
             "full_name": "TEST X", "mobile": "9" + str(uuid.uuid4().int)[:9],
-            "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "B", "batch_no": "B1", "faculty_name": "TEST Fac", "confirm": False}, timeout=30)
+            "email": "delivered@resend.dev", "branch_id": "br-1", "batch": "B", "batch_no": "B1", "faculty_name": "TEST Fac", "confirm": False, "privacy_accepted": True}, timeout=30)
         assert r.status_code == 422
 
     def test_lookup_flow(self, admin):

@@ -255,6 +255,14 @@ class RegistrationIn(BaseModel):
     batch_no: str = Field(min_length=1, max_length=30)
     faculty_name: str = Field(min_length=2, max_length=120)
     confirm: bool
+    privacy_accepted: bool
+
+    @field_validator("privacy_accepted")
+    @classmethod
+    def _must_accept(cls, v):
+        if not v:
+            raise ValueError("You must accept the privacy notice.")
+        return v
 
     @field_validator("full_name", "mobile", "branch_id", "batch", "batch_no", "faculty_name")
     @classmethod
@@ -538,6 +546,60 @@ async def public_batches():
 
 
 # ---------------------------------------------------------------------------
+# EVENT SETTINGS
+# ---------------------------------------------------------------------------
+DEFAULT_PRIVACY = (
+    "Delta Academy collects your name, mobile number, email, branch, batch, batch number and faculty name "
+    "only to verify you as a student and to manage entry to OLAM 3.0. Your details are visible only to the "
+    "event admin and your branch coordinator, are never sold or shared, and will be deleted after the event."
+)
+DEFAULT_CLOSED = "Registration for OLAM 3.0 is currently closed. Please contact your branch coordinator."
+
+
+class EventSettingsIn(BaseModel):
+    registration_open: bool
+    closed_message: str = Field(min_length=3, max_length=400)
+    privacy_notice: str = Field(min_length=20, max_length=3000)
+
+
+async def _get_settings() -> dict:
+    s = await db.settings.find_one({"id": "event"}, {"_id": 0})
+    return {
+        "registration_open": True if not s else bool(s.get("registration_open", True)),
+        "closed_message": (s or {}).get("closed_message") or DEFAULT_CLOSED,
+        "privacy_notice": (s or {}).get("privacy_notice") or DEFAULT_PRIVACY,
+        "updated_at": (s or {}).get("updated_at"),
+        "updated_by_name": (s or {}).get("updated_by_name"),
+    }
+
+
+@api.get("/public/settings")
+async def public_settings():
+    s = await _get_settings()
+    return {k: s[k] for k in ("registration_open", "closed_message", "privacy_notice")}
+
+
+@api.get("/settings")
+async def get_settings(user=Depends(require_roles("super_admin"))):
+    return await _get_settings()
+
+
+@api.put("/settings")
+async def update_settings(body: EventSettingsIn, user=Depends(require_roles("super_admin"))):
+    doc = {
+        "id": "event",
+        "registration_open": body.registration_open,
+        "closed_message": body.closed_message.strip(),
+        "privacy_notice": body.privacy_notice.strip(),
+        "updated_at": datetime.now(timezone.utc),
+        "updated_by_name": user.get("name") or user["email"],
+    }
+    await db.settings.update_one({"id": "event"}, {"$set": doc}, upsert=True)
+    await audit(user["id"], "settings.update", "event", {"registration_open": body.registration_open})
+    return await _get_settings()
+
+
+# ---------------------------------------------------------------------------
 # REGISTRATION (public submit, status, pass retrieval)
 # ---------------------------------------------------------------------------
 async def _send_pass_email(reg: dict, pass_token: str) -> None:
@@ -584,6 +646,9 @@ async def _send_pass_email(reg: dict, pass_token: str) -> None:
 
 @api.post("/registrations", response_model=RegistrationOut)
 async def submit_registration(body: RegistrationIn, request: Request):
+    settings = await _get_settings()
+    if not settings["registration_open"]:
+        raise HTTPException(403, settings["closed_message"])
     branch = await db.branches.find_one({"id": body.branch_id, "active": True})
     if not branch:
         raise HTTPException(400, "Invalid branch")
@@ -601,6 +666,7 @@ async def submit_registration(body: RegistrationIn, request: Request):
         "batch": body.batch,
         "batch_no": body.batch_no,
         "faculty_name": body.faculty_name,
+        "privacy_accepted_at": now,
         "status": "pending",
         "rejection_reason": None,
         "created_at": now,
@@ -1134,6 +1200,57 @@ async def update_staff(uid: str, body: StaffUpdateIn, user=Depends(require_roles
 
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# FACULTY REPORT
+# ---------------------------------------------------------------------------
+async def _faculty_rows(user: dict, branch_id: Optional[str]) -> list:
+    filt = _branch_filter(user)
+    if user["role"] == "super_admin" and branch_id:
+        filt["branch_id"] = branch_id
+    filt["faculty_name"] = {"$exists": True, "$ne": None}
+    branches = {b["id"]: b["name"] for b in await db.branches.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(100)}
+    checked = {a["registration_id"] for a in await db.attendance.find({}, {"_id": 0, "registration_id": 1}).to_list(10000)}
+    groups: dict = {}
+    for r in await db.registrations.find(filt, {"_id": 0, "id": 1, "branch_id": 1, "faculty_name": 1, "status": 1}).to_list(10000):
+        display = re.sub(r"\s+", " ", (r.get("faculty_name") or "").strip())
+        if not display:
+            continue
+        key = (r["branch_id"], display.lower())
+        g = groups.setdefault(key, {
+            "branch_id": r["branch_id"], "branch_name": branches.get(r["branch_id"], "?"), "faculty_name": display,
+            "total": 0, "approved": 0, "pending": 0, "rejected": 0, "checked_in": 0,
+        })
+        g["total"] += 1
+        g[r["status"]] = g.get(r["status"], 0) + 1
+        if r["id"] in checked:
+            g["checked_in"] += 1
+    return sorted(groups.values(), key=lambda g: (g["branch_name"], -g["total"], g["faculty_name"].lower()))
+
+
+@api.get("/reports/faculty")
+async def faculty_report(branch_id: Optional[str] = None, user=Depends(require_roles("super_admin", "coordinator"))):
+    rows = await _faculty_rows(user, branch_id)
+    return {"rows": rows, "total_students": sum(r["total"] for r in rows), "faculty_count": len(rows)}
+
+
+@api.get("/export/faculty.csv")
+async def export_faculty(branch_id: Optional[str] = None, user=Depends(require_roles("super_admin", "coordinator"))):
+    if user["role"] == "coordinator" and not user.get("can_export"):
+        raise HTTPException(403, "CSV download has not been enabled for your account by the admin")
+    rows = await _faculty_rows(user, branch_id)
+    buf = io.StringIO()
+    w = csv.writer(buf, quoting=csv.QUOTE_ALL)
+    w.writerow(["Branch", "Faculty Name", "Total Students", "Approved", "Pending", "Rejected", "Checked In"])
+    for r in rows:
+        w.writerow([_csv_safe(v) for v in [r["branch_name"], r["faculty_name"], r["total"], r["approved"], r["pending"], r["rejected"], r["checked_in"]]])
+    await audit(user["id"], "export.faculty_csv", None, {"rows": len(rows)})
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=olam-faculty-report.csv"},
+    )
+
+
 # CSV export
 # ---------------------------------------------------------------------------
 @api.get("/export/registrations.csv")

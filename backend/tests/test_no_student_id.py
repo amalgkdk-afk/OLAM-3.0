@@ -32,7 +32,7 @@ def _mobile():
 def _payload(**over):
     p = {"full_name": "TEST NoId " + uuid.uuid4().hex[:6], "mobile": _mobile(), "email": EMAIL,
          "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B-7", "faculty_name": "TEST Faculty Seven",
-         "confirm": True}
+         "confirm": True, "privacy_accepted": True}
     p.update(over)
     return p
 

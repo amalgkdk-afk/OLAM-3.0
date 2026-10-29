@@ -47,3 +47,8 @@ Online student registration, branch coordinator approval, secure QR pass, duplic
 - Registration: mandatory Batch No. and Faculty Name text fields (all fields mandatory, trimmed, min lengths enforced after trim); shown in dashboard, my-pass, CSV
 - QA admin for tests: qa-admin@olam.delta (see test_credentials.md)
 - Student ID / Admission No. removed from form, API input, CSV and dashboard. Duplicate rule now: same branch + same mobile (last 10 digits) + same name (case/space-insensitive) via unique partial index on dedupe_key; old branch_id+student_code index dropped
+
+## Iteration 8 (Oct 2026)
+- Event Settings page (/staff/event-settings, super admin): registration open/close switch, closed message, privacy notice (settings collection, GET/PUT /api/settings, GET /api/public/settings). Closed -> POST /api/registrations 403 with message; register screen shows closed panel; landing button says "Registration closed"
+- Privacy notice shown on register form; privacy_accepted required (stored privacy_accepted_at)
+- Faculty Report (/staff/faculty-report): per branch + faculty (case/space-insensitive) counts total/approved/pending/rejected/checked-in; GET /api/reports/faculty, GET /api/export/faculty.csv (admin; coordinator only own branch and only if can_export)

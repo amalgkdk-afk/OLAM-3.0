@@ -15,19 +15,22 @@ export default function Register() {
   const insets = useSafeAreaInsets();
   const [branches, setBranches] = useState<Branch[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
-  const [form, setForm] = useState({ full_name: "", mobile: "", email: "", branch_id: "", batch: "", batch_no: "", faculty_name: "", confirm: false });
+  const [form, setForm] = useState({ full_name: "", mobile: "", email: "", branch_id: "", batch: "", batch_no: "", faculty_name: "", confirm: false, privacy_accepted: false });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [settings, setSettings] = useState<{ registration_open: boolean; closed_message: string; privacy_notice: string } | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const [b, bt] = await Promise.all([
+        const [b, bt, st] = await Promise.all([
           api<Branch[]>("/public/branches"),
           api<Batch[]>("/public/batches"),
+          api<{ registration_open: boolean; closed_message: string; privacy_notice: string }>("/public/settings"),
         ]);
         setBranches(b);
         setBatches(bt);
+        setSettings(st);
       } catch (e: any) { setError(e.message); }
     })();
   }, []);
@@ -43,6 +46,7 @@ export default function Register() {
       return;
     }
     if (!form.confirm) { setError("Please confirm your information is accurate."); return; }
+    if (!form.privacy_accepted) { setError("Please read and accept the privacy notice."); return; }
     setSubmitting(true);
     try {
       const reg = await api<{ reference: string }>("/registrations", { method: "POST", body: JSON.stringify(form) });
@@ -59,8 +63,14 @@ export default function Register() {
         <Pressable testID="register-back-btn" onPress={() => router.back()} style={styles.back}><Text style={styles.backTxt}>← Back</Text></Pressable>
         <Eyebrow>EVENT REGISTRATION</Eyebrow>
         <H1>Your invitation awaits</H1>
-        <Text style={styles.sub}>Takes under two minutes. Approval comes from your branch coordinator.</Text>
+        {settings && !settings.registration_open ? null : <Text style={styles.sub}>Takes under two minutes. Approval comes from your branch coordinator.</Text>}
 
+        {settings && !settings.registration_open ? (
+          <View style={styles.closedBox} testID="register-closed">
+            <Text style={styles.closedTitle}>Registration closed</Text>
+            <Text style={styles.closedTxt}>{settings.closed_message}</Text>
+          </View>
+        ) : (
         <View style={{ marginTop: spacing.xl }}>
           <Field label="Full Name">
             <TextInputPill testID="register-name-input" value={form.full_name} onChangeText={(v) => set("full_name", v)} placeholder="Enter your full name" />
@@ -99,13 +109,26 @@ export default function Register() {
             <View style={[styles.cb, form.confirm && styles.cbOn]}>{form.confirm ? <Text style={{ color: colors.onBrandPrimary, fontWeight: "900" }}>✓</Text> : null}</View>
             <Text style={styles.confirmTxt}>I confirm the information I have provided is accurate and I am a current Delta Academy student.</Text>
           </Pressable>
+          {settings?.privacy_notice ? (
+            <View style={styles.privacyBox} testID="register-privacy-notice">
+              <Text style={styles.privacyTitle}>PRIVACY NOTICE</Text>
+              <Text style={styles.privacyTxt}>{settings.privacy_notice}</Text>
+            </View>
+          ) : null}
+          <Pressable testID="register-privacy-check" onPress={() => { set("privacy_accepted", !form.privacy_accepted); setError(null); }} style={styles.confirmRow}>
+            <View style={[styles.cb, form.privacy_accepted && styles.cbOn]}>{form.privacy_accepted ? <Text style={{ color: colors.onBrandPrimary, fontWeight: "900" }}>✓</Text> : null}</View>
+            <Text style={styles.confirmTxt}>I have read and accept the privacy notice.</Text>
+          </Pressable>
         </View>
+        )}
         </View>
       </ScrollView>
+      {settings && !settings.registration_open ? null : (
       <View style={[styles.ctaBar, { paddingBottom: insets.bottom + spacing.md }]}>
         {error ? <Text style={styles.ctaErr} testID="register-error">{error}</Text> : null}
         <GoldButton testID="register-submit-btn" label={submitting ? "Submitting..." : "Submit Registration"} onPress={submit} loading={submitting} />
       </View>
+      )}
     </KeyboardAvoidingView>
     </BgScreen>
   );
@@ -120,11 +143,17 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.brandSecondary, borderColor: colors.brandSecondary },
   chipTxt: { color: colors.onSurface, fontSize: 13, fontFamily: fonts.textMed },
   chipTxtActive: { color: colors.onBrandSecondary },
-  confirmRow: { flexDirection: "row", alignItems: "flex-start", marginTop: spacing.md, gap: 10 },
+  confirmRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.md, gap: 10, minHeight: 44 },
   cb: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: colors.borderStrong, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceSecondary },
   cbOn: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   confirmTxt: { color: colors.onSurface, flex: 1, fontSize: 13, lineHeight: 19, fontFamily: fonts.text },
   err: { color: colors.error, marginTop: spacing.md, fontFamily: fonts.textMed, fontSize: 13 },
+  privacyBox: { marginTop: spacing.lg, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border },
+  privacyTitle: { fontSize: 10, letterSpacing: 3, color: colors.goldText, fontFamily: fonts.textBold, marginBottom: 6 },
+  privacyTxt: { fontSize: 12, lineHeight: 18, color: colors.onSurface, fontFamily: fonts.text },
+  closedBox: { marginTop: spacing.xl, padding: spacing.lg, borderRadius: radius.md, backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.error },
+  closedTitle: { fontFamily: fonts.display, fontSize: 22, color: colors.onSurface },
+  closedTxt: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: colors.onSurface, marginTop: spacing.sm },
   ctaErr: { color: "#FFFFFF", backgroundColor: colors.error, borderRadius: radius.md, overflow: "hidden", paddingHorizontal: spacing.md, paddingVertical: spacing.sm, marginBottom: spacing.md, fontFamily: fonts.textMed, fontSize: 13, textAlign: "center" },
   ctaBar: { position: "absolute", left: 0, right: 0, bottom: 0, padding: spacing.lg, backgroundColor: "rgba(0,0,0,0.85)", borderTopWidth: 1, borderTopColor: "rgba(212,175,55,0.5)" },
 });

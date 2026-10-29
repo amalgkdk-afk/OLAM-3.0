@@ -36,7 +36,7 @@ def qa():
 def _register(name="TEST Sec Student"):
     r = requests.post(f"{API}/registrations", json={
         "full_name": name, "mobile": "9" + str(uuid.uuid4().int)[:9],
-        "email": EMAIL, "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True}, timeout=30)
+        "email": EMAIL, "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B12", "faculty_name": "TEST Faculty", "confirm": True, "privacy_accepted": True}, timeout=30)
     assert r.status_code == 200, r.text
     CREATED["regs"].append(r.json()["id"])
     return r.json()

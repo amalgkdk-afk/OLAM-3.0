@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 8: tested the Event Settings feature (open/close registration, closed message, privacy notice), the privacy_accepted rule on registration, the Faculty Report and its CSV, and approve->scan regression. New backend suite test_settings_faculty.py: 15/15 passed. Full backend regression: 90 passed, 1 skipped, 2 failed only when run in parallel; both passed when re-run alone (flaky because of xdist parallelism). Frontend at 390x844: every requested flow passed (register privacy notice and error, valid submit to confirmation, closed state on register and landing, admin settings toggle that persists after reload, messages saved, short-message error, faculty report summary, chips and grouping, CSV download, coordinator sees export disabled). No deprecated Expo packages detected. Only minor design issues found. At the end, registration is OPEN and the settings doc is deleted (defaults restored).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/reports/faculty", "issue": "Loads up to 10000 registrations and 10000 attendance docs with to_list(10000), so larger data is silently cut off. A Mongo aggregation ($group on branch_id + normalised faculty_name) would scale better. The display name is the first variant found, so which casing shows depends on DB order."},
+      {"endpoint": "PUT /api/settings", "issue": "A 422 returns pydantic detail as an array, so the frontend falls back to a generic 'Please check the messages are not too short.' (it works but does not say which field)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/register", "issues": ["The register-privacy-check row is only 22px tall (bbox 308x22), below the 44px touch target. Add minHeight 44 to styles.confirmRow.", "When closed, the header still says 'Your invitation awaits / Takes under two minutes' above the Registration closed box, which contradicts it."]},
+      {"screen": "/ (landing)", "issues": ["When closed, landing-register-btn reads 'Registration closed' but still looks like the active gold CTA. Consider a muted/disabled style (tapping it opens the closed screen, which is fine)."]},
+      {"screen": "/staff/faculty-report", "issues": ["Branch chips are 36px tall (<44 touch target).", "The gold summary numbers (faculty-count / faculty-students-total) on the cream surface have low contrast."]},
+      {"screen": "/staff/event-settings", "issues": ["Tapping the toggle also saves any unsaved edits in the message boxes. If a message is too short, the toggle fails with a 422. Better to save only registration_open, or warn about unsaved edits."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_settings_faculty.py", "/app/backend/tests/setup_iter8_ui.py", "/app/test_reports/pytest/pytest_iter8.xml", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Add minHeight: 44 to confirmRow in register.tsx (privacy and confirm checkbox rows).",
+    "Optional: give the landing CTA a muted style when registration is closed, and hide or change the 'Takes under two minutes' subtitle on the closed register screen.",
+    "Optional: replace the to_list(10000) scans in _faculty_rows with an aggregation pipeline.",
+    "Optional: make the event-settings toggle save only registration_open (or keep the last saved messages).",
+    "server.py is 1306 lines; consider splitting it into routers (settings, reports, registrations, staff)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is over 700 lines (1306). It should be split into modules.",
+    "server.py ~1202-1203 has a duplicated section divider, and the '# CSV export' header is missing its top divider (cosmetic).",
+    "Faculty CSV goes through _csv_safe (formula neutralisation verified: '=cmd...' becomes \"'=cmd...\")."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_settings_faculty.py (new)",
+    "/app/backend/tests/setup_iter8_ui.py (new)",
+    "Added privacy_accepted: True to registration payloads in test_olam_api.py, test_security_fixes.py, test_batchno_faculty.py, test_branches_attendance.py, test_no_student_id.py, setup_iter5_ui.py, setup_ui_security.py"
+  ],
+  "success_rate": {"backend": "100% (new suite 15/15; full regression 90/92 in parallel, the 2 failures pass alone and are flaky under xdist)", "frontend": "100% of requested flows"},
+  "flaky_tests": [
+    "test_followup_fixes.py::TestLoginLockout::test_external_lockout_after_5 (got 200 instead of 429 in parallel run; passes with -n 0)",
+    "test_security_fixes.py::TestPassTokens::test_token_lifecycle_and_scan (KeyError pass_token in parallel run, likely a lookup rate limit or interference from another worker; passes with -n 0)"
+  ],
+  "seed_data_creation": "Test registrations, staff and settings were created and then removed with cleanup_test_data.py and db.settings.deleteMany({}). Kept: OLM-8932B1, OLM-E9C76C, OLM-72857B, OLM-E04B9A, OLM-7A2076, qa-admin, owner.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "pytest.ini adds xdist (-n); use '-n 0' to run alone. test_settings_faculty.py briefly CLOSES registration and deletes the settings doc in teardown. Running it in parallel with other registration tests can cause random 403s. Restart the backend before the full suite (rate limit is 10/min per IP). Frontend env var is EXPO_PUBLIC_BACKEND_URL."
+}

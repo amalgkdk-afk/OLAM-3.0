@@ -18,7 +18,7 @@ EMAIL = "delivered@resend.dev"
 def _payload(**over):
     p = {"full_name": "TEST Iter6 Student", "mobile": "9" + str(uuid.uuid4().int)[:9],
          "email": EMAIL, "branch_id": "br-1", "batch": "TEST_Batch", "batch_no": "B-42",
-         "faculty_name": "TEST Dr. Faculty", "confirm": True}
+         "faculty_name": "TEST Dr. Faculty", "confirm": True, "privacy_accepted": True}
     p.update(over)
     return p
 

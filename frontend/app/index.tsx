@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
+import { api } from "@/src/api";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors, fonts, radius, spacing } from "@/src/theme";
@@ -9,6 +11,10 @@ import { LinearGradient } from "expo-linear-gradient";
 export default function Landing() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [open, setOpen] = useState<boolean | null>(null);
+  useEffect(() => {
+    api<{ registration_open: boolean }>("/public/settings").then((s) => setOpen(s.registration_open)).catch(() => setOpen(null));
+  }, []);
   return (
     <BgScreen dim={0.15} testID="landing-screen">
       <View style={[styles.topRow, { paddingTop: insets.top + spacing.sm }]}>
@@ -25,7 +31,7 @@ export default function Landing() {
         <Text style={styles.title}>OLAM 3.0</Text>
         <Text style={styles.tagline}>THE GRAND WEDDING</Text>
         <Text style={styles.sub}>Inter-branch arts festival · Register online and get your digital entry pass</Text>
-        <GoldButton testID="landing-register-btn" label="Register as a Student" onPress={() => router.push("/register")} style={styles.cta} />
+        <GoldButton testID="landing-register-btn" label={open === false ? "Registration closed" : "Register as a Student"} variant={open === false ? "navy" : "primary"} onPress={() => router.push("/register")} style={styles.cta} />
         <Pressable testID="landing-retrieve-btn" onPress={() => router.push("/my-pass")} style={styles.link}>
           <Text style={styles.linkText}>Already registered? Retrieve my pass</Text>
         </Pressable>
