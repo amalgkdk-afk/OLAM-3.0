@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl, ActivityIndicator, Modal, TextInput, Platform } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl, ActivityIndicator, Modal, TextInput, Platform, useWindowDimensions } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, clearSession, getUser, AuthUser, getPublicUrl, getToken } from "@/src/api";
@@ -14,6 +14,7 @@ type Stats = { total: number; pending: number; approved: number; rejected: numbe
 export default function Dashboard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const wide = useWindowDimensions().width >= 900;
   const [user, setUser] = useState<AuthUser | null>(null);
   const [tab, setTab] = useState<"overview" | "regs" | "settings" | "scanner">("overview");
   const [stats, setStats] = useState<Stats | null>(null);
@@ -151,12 +152,14 @@ export default function Dashboard() {
         {tab === "overview" && stats && (
           <View>
             <View style={styles.statGrid}>
-              <StatCard label="Total" value={stats.total} testID="stat-total" />
-              <StatCard label="Pending" value={stats.pending} tone="warning" testID="stat-pending" />
-              <StatCard label="Approved" value={stats.approved} tone="success" testID="stat-approved" />
-              <StatCard label="Rejected" value={stats.rejected} tone="error" testID="stat-rejected" />
-              <StatCard label="Checked In" value={stats.checked_in} tone="info" testID="stat-checkedin" />
-              <StatCard label="Not Yet In" value={stats.not_checked_in} testID="stat-notin" />
+              {[
+                { label: "Total", value: stats.total, testID: "stat-total" },
+                { label: "Pending", value: stats.pending, tone: "warning", testID: "stat-pending" },
+                { label: "Approved", value: stats.approved, tone: "success", testID: "stat-approved" },
+                { label: "Rejected", value: stats.rejected, tone: "error", testID: "stat-rejected" },
+                { label: "Checked In", value: stats.checked_in, tone: "info", testID: "stat-checkedin" },
+                { label: "Not Yet In", value: stats.not_checked_in, testID: "stat-notin" },
+              ].map((s) => <StatCard key={s.testID} {...(s as any)} wide={wide} />)}
             </View>
             <Card style={{ marginTop: spacing.lg }}>
               <Text style={styles.cardTitle}>Attendance</Text>
@@ -203,8 +206,9 @@ export default function Dashboard() {
               </View>
             )}
             {bulkMsg ? <Text style={styles.bulkMsg} testID="bulk-result">{bulkMsg}</Text> : null}
+            <View style={wide ? styles.regGrid : undefined}>
             {filteredRegs.map((r) => (
-              <Card key={r.id} style={{ marginTop: spacing.md }}>
+              <Card key={r.id} style={[{ marginTop: spacing.md }, wide && styles.regCardWide]}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                   {r.status === "pending" ? (
                     <Pressable testID={`select-reg-${r.id}`} onPress={() => toggleSel(r.id)} hitSlop={10} style={styles.selBox}>
@@ -239,6 +243,7 @@ export default function Dashboard() {
                 )}
               </Card>
             ))}
+            </View>
           </View>
         )}
 
@@ -305,10 +310,10 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ label, value, tone, testID }: { label: string; value: number; tone?: "success" | "warning" | "error" | "info"; testID?: string }) {
+function StatCard({ label, value, tone, testID, wide }: { label: string; value: number; tone?: "success" | "warning" | "error" | "info"; testID?: string; wide?: boolean }) {
   const color = tone === "success" ? colors.success : tone === "warning" ? colors.warning : tone === "error" ? colors.error : tone === "info" ? colors.info : colors.brandPrimary;
   return (
-    <View style={styles.statCard} testID={testID}>
+    <View style={[styles.statCard, wide && { width: "15%", minWidth: 140, flexGrow: 1 }]} testID={testID}>
       <Text style={[styles.statVal, { color }]}>{value}</Text>
       <Text style={styles.statLbl}>{label}</Text>
     </View>
@@ -326,6 +331,8 @@ const styles = StyleSheet.create({
   tabTxt: { color: colors.onSurface, fontSize: 12, fontFamily: fonts.textMed },
   tabTxtActive: { color: colors.onBrandSecondary },
   statGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+  regGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  regCardWide: { width: "49%" },
   statCard: { width: "47%", backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: colors.border },
   statVal: { fontFamily: fonts.display, fontSize: 36 },
   statLbl: { color: colors.muted, fontSize: 11, letterSpacing: 2, fontFamily: fonts.textBold, textTransform: "uppercase" },

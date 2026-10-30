@@ -73,3 +73,8 @@ Online student registration, branch coordinator approval, secure QR pass, duplic
 ## Iteration 16
 - Not Arrived list (/staff/absent, GET /api/reports/absent, /api/export/absent.csv): approved & not checked-in students by branch, search, tap-to-call; coordinator scoped.
 - Scanner: distinct refused tone (assets/sounds/refused-tone.wav) on ALREADY_CHECKED_IN / NOT_APPROVED / REVOKED / INVALID.
+
+## Iteration 17 (Web app)
+- Laptop layout: staff screens centred (max 1120px) on navy; dashboard stats in one row, registrations in 2 columns (>=900px). Phones unchanged.
+- Installable web app: public/manifest.json, icons (public/icon-*.png, apple-touch-icon), +html.tsx meta; "Add to home screen" button on landing (Android prompt / iPhone instructions). New OLAM app icon/favicon.
+- Scanner camera box max 600px; works in phone browser over HTTPS.

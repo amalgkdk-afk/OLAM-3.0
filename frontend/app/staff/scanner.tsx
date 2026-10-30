@@ -110,8 +110,8 @@ export default function Scanner() {
           <Text style={styles.hello}>{user.name || user.email}</Text>
         </View>
         <View style={{ flexDirection: "row", gap: spacing.md }}>
-          {user.role !== "scanner" && <Pressable testID="scanner-dashboard-btn" onPress={() => (router.canGoBack() ? router.back() : router.replace("/staff/dashboard"))}><Text style={styles.logout}>Dashboard</Text></Pressable>}
-          <Pressable testID="scanner-logout-btn" onPress={async () => { await clearSession(); router.replace("/staff/login"); }}><Text style={styles.logout}>Sign out</Text></Pressable>
+          {user.role !== "scanner" && <Pressable testID="scanner-dashboard-btn" style={styles.headBtn} onPress={() => (router.canGoBack() ? router.back() : router.replace("/staff/dashboard"))}><Text style={styles.logout}>Dashboard</Text></Pressable>}
+          <Pressable testID="scanner-logout-btn" style={styles.headBtn} onPress={async () => { await clearSession(); router.replace("/staff/login"); }}><Text style={styles.logout}>Sign out</Text></Pressable>
         </View>
       </View>
 
@@ -198,7 +198,8 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: spacing.lg, paddingBottom: spacing.md, flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", borderBottomWidth: 1, borderBottomColor: "rgba(212,175,55,0.2)" },
   hello: { fontFamily: fonts.display, fontSize: 20, color: colors.onSurfaceInverse, marginTop: 4 },
   logout: { color: colors.brandPrimary, fontFamily: fonts.textMed, fontSize: 13 },
-  camWrap: { height: 320, backgroundColor: "#000", margin: spacing.lg, borderRadius: radius.lg, overflow: "hidden", borderWidth: 1, borderColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
+  headBtn: { minHeight: 44, justifyContent: "center" },
+  camWrap: { height: 320, width: "92%", maxWidth: 600, alignSelf: "center", backgroundColor: "#000", marginVertical: spacing.lg, borderRadius: radius.lg, overflow: "hidden", borderWidth: 1, borderColor: colors.brandPrimary, alignItems: "center", justifyContent: "center" },
   viewfinder: { position: "absolute", width: 220, height: 220, borderWidth: 2, borderColor: colors.brandPrimary, borderRadius: radius.lg },
   permWrap: { padding: spacing.xl, alignItems: "center" },
   permTitle: { color: colors.onSurfaceInverse, fontFamily: fonts.display, fontSize: 20, textAlign: "center" },

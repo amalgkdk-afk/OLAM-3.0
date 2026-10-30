@@ -17,6 +17,17 @@ export default function Root({ children }: PropsWithChildren) {
           If you want to enable scrolling, remove `ScrollViewStyleReset` and
           set `overflow: auto` on the body style below.
         */}
+        <title>OLAM 3.0 – The Grand Wedding</title>
+        <meta name="description" content="Register, get your entry pass and check in for OLAM 3.0 by Delta Academy." />
+        {/* Install as an app ("Add to Home Screen") */}
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#0B192C" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="OLAM 3.0" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <ScrollViewStyleReset />
         <style
           dangerouslySetInnerHTML={{

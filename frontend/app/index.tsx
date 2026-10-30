@@ -7,6 +7,7 @@ import { colors, fonts, radius, spacing } from "@/src/theme";
 import { GoldButton } from "@/src/components/ui";
 import { LinearGradient } from "expo-linear-gradient";
 import { BgScreen } from "@/src/components/bg-screen";
+import { InstallApp } from "@/src/components/install-app";
 
 export default function Landing() {
   const router = useRouter();
@@ -39,6 +40,7 @@ export default function Landing() {
         <Pressable testID="landing-retrieve-btn" onPress={() => router.push("/my-pass")} style={styles.link}>
           <Text style={styles.linkText}>Already registered? Retrieve my pass</Text>
         </Pressable>
+        <InstallApp />
       </LinearGradient>
     </BgScreen>
   );

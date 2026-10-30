@@ -1,0 +1,31 @@
+{
+  "summary": "Frontend-only testing of the desktop layout and PWA changes. Desktop (1366x800): the staff column is centred at x=123 and 1120px wide on navy, with no horizontal overflow. The 6 overview stat cards sit in one row (171px each). Registrations cards are in 2 columns. Attendance, Faculty, Day Summary, Not Arrived, Settings and Scanner render cleanly. The scanner camera box is centred, 600x320. Phone (390x844): landing, register, my-pass, staff login, dashboard (2 stats per row), single-column registrations and scanner all have scrollWidth 390, so nothing overflows. Install button: hidden with the desktop Chrome UA. With an iPhone UA it shows (266x44); the first tap shows install-ios-help with the correct text and a second tap hides it. PWA assets: manifest.json, icon-192 (192x192), icon-512, icon-maskable-512 and apple-touch-icon (180x180) all return 200 with image/png. The manifest has name, short_name, display=standalone and any+maskable icons. FAILED: the served page head has NO <link rel=manifest>, NO apple-touch-icon and NO apple-mobile-web-app-* meta tags. The cause is that app.json web.output='single' ignores app/+html.tsx. Only theme-color is present, and it comes from app.json web.themeColor.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "PWA Add to Home Screen", "issue": "GET / (and every route) serves the default @expo/cli template index.html. app/+html.tsx is only used for static output ('static'/'server'), but app.json has web.output='single'. As a result, <link rel='manifest'>, <link rel='apple-touch-icon'>, <link rel='icon' 192>, apple-mobile-web-app-capable/title/status-bar and mobile-web-app-capable are all missing. This was checked both with curl and at runtime (document.querySelector('link[rel=manifest]') is null). Effects: Chrome/Android will never fire beforeinstallprompt because there is no manifest link, so the install button never appears on Android or desktop. On iOS, Add to Home Screen falls back to a screenshot icon with the default title.", "affected_testIDs": ["install-app-btn"]}
+    ],
+    "design_issues": [
+      {"screen": "staff/scanner header", "issues": ["The Dashboard and Sign out Pressables (scanner-dashboard-btn, scanner-logout-btn) have no minHeight/minWidth. Their tap targets are about 18px tall, below 44px. This predates this change."]},
+      {"screen": "staff/dashboard tabs", "issues": ["The tab bar row shifts vertically by about 3–9px between Overview, Registrations and Settings (horizontal ScrollView height changes). This is cosmetic."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "HIGH: Make the PWA head tags actually get served. app.json uses web.output='single', so app/+html.tsx is ignored. Create /app/frontend/public/index.html: copy node_modules/@expo/cli/static/template/index.html and add <link rel=\"manifest\" href=\"/manifest.json\">, <link rel=\"apple-touch-icon\" href=\"/apple-touch-icon.png\">, <link rel=\"icon\" sizes=\"192x192\" href=\"/icon-192.png\"> and the apple-mobile-web-app-* / mobile-web-app-capable metas. Do NOT change app.json. Restart expo, then verify with curl / | grep manifest.",
+    "Low: add minHeight 44 to the scanner header Dashboard and Sign out Pressables."
+  ],
+  "critical_code_review_comments": [
+    "+html.tsx has no effect in single-output mode, so it is dead code unless the output mode changes.",
+    "install-app.tsx: the logic is correct, but on Android/desktop it depends on beforeinstallprompt, which needs the manifest link (currently missing). Also, iPadOS 13+ Safari reports a Mac UA, so the iPad regex won't match. This is minor."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A", "frontend": "90% (all layout checks passed; the PWA head-tag check failed)"},
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login: qa-admin@olam.delta / QaAdmin#2026x with role login-role-super_admin. The wide-layout breakpoint is width >= 900. To test the iPhone UA, use browser.new_context(user_agent=...). After the fix, check curl $URL/ | grep manifest.",
+  "rca_of_issue": "Expo Router only renders app/+html.tsx for static/server output. With web.output='single', Metro serves public/index.html if it exists, otherwise the built-in template. There is no public/index.html, so the custom head tags never reach the browser."
+}

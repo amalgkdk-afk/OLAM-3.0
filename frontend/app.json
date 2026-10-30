@@ -27,7 +27,11 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "OLAM 3.0 – The Grand Wedding",
+      "shortName": "OLAM 3.0",
+      "themeColor": "#0B192C",
+      "backgroundColor": "#0B192C"
     },
     "plugins": [
       "expo-router",
