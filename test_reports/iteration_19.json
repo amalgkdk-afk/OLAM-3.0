@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend-only test of the Coordinator WhatsApp Reminder on /staff/absent at 390x844 and 1366x800. Created two approved TEST registrations: OLM-542543 with mobile 9876531416 and OLM-960A7D with '+91 97654 33286', stored as +919765433286. Logged in as qa-admin with role super_admin and opened dashboard-tab-absent, which went to /staff/absent. Each card shows absent-call-{REF} and absent-wa-{REF}; both buttons are 44px tall, sit on the same row and stay inside the card at both sizes. I stubbed window.open to capture the links. Clicking the WhatsApp button opened https://wa.me/919876531416 for the 10-digit number and https://wa.me/919765433286 for the +91 number. The decoded text contains the name, the branch (KALOOR), 'Reference: REF' and '<origin>/my-pass?ref=REF'. It does not contain the QR pass token (checked against the lookup token). No error message appeared. Regression checks passed: search by reference filters the list, a search with no results shows absent-no-match, the branch chips work (br-2 shows 0 and br-1 shows the students), and export downloads olam-absent-students.csv containing the test reference. All checks passed. Test data cleaned up.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [{"screen": "/staff/absent", "issues": ["White 13px text on #128C7E WhatsApp button has a contrast ratio of about 4.15:1, just below WCAG AA (4.5:1) for normal text. Consider #075E54 or a 14px+ bold label (optional)."]}],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/setup_iter19_ui.py"],
+  "action_items": [
+    "Optional: give the absent-call and absent-wa Pressables accessibilityRole='button' and an accessibilityLabel.",
+    "Optional: in sendReminder, mobiles with fewer than 10 digits produce an invalid wa.me link. Consider showing a message instead of opening WhatsApp."
+  ],
+  "critical_code_review_comments": [
+    "sendReminder normalisation is correct for 10-digit numbers, numbers with a leading 0 (11 digits) and +91 numbers. Other country codes pass through unchanged.",
+    "No deprecated Expo packages are used in absent.tsx."
+  ],
+  "updated_files": ["/app/backend/tests/setup_iter19_ui.py"],
+  "success_rate": {"backend": "N/A", "frontend": "100%"},
+  "seed_data_creation": "2 TEST registrations (TEST WA Ten, TEST WA Plus), removed with cleanup_test_data.py",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use setup_iter19_ui.py to create approved registrations with a 10-digit mobile and a +91 mobile. Stub window.open via add_init_script to capture the wa.me URL. Run cleanup_test_data.py afterwards."
+}

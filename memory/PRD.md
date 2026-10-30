@@ -81,3 +81,6 @@ Online student registration, branch coordinator approval, secure QR pass, duplic
 
 ## Iteration 18
 - Pass page: "Share on WhatsApp" (wa.me) shares name, branch, reference + /my-pass?ref= link (QR token never shared).
+
+## Iteration 19
+- Not Arrived list: per-student "WhatsApp reminder" button (wa.me/<91+number>) with ready-made message, reference and /my-pass?ref link.

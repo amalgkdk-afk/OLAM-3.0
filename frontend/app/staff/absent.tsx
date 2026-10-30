@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl, ActivityIndicator, Linking } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl, ActivityIndicator, Linking, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { api, getUser, AuthUser } from "@/src/api";
+import { api, getUser, AuthUser, getPublicUrl } from "@/src/api";
 import { colors, fonts, radius, spacing } from "@/src/theme";
 import { Card, Eyebrow, GoldButton, H1, TextInputPill } from "@/src/components/ui";
 import { downloadCsv } from "@/src/utils/csv";
@@ -47,6 +47,17 @@ export default function Absent() {
   }, [router, load]);
 
   const canExport = user?.role === "super_admin" || !!user?.can_export;
+
+  function sendReminder(s: Student, branch: string) {
+    // wa.me needs the full international number (digits only); 10-digit numbers are treated as Indian (+91).
+    let num = s.mobile.replace(/\D/g, "");
+    if (num.length === 11 && num.startsWith("0")) num = num.slice(1);
+    if (num.length === 10) num = `91${num}`;
+    if (num.length < 11) { setMsg(`${s.full_name}'s mobile number looks incomplete — please call instead.`); return; }
+    const base = Platform.OS === "web" && typeof window !== "undefined" ? window.location.origin : getPublicUrl();
+    const msg = `Hi ${s.full_name}, this is your OLAM 3.0 coordinator (${branch}). 🎉\n\nThe Grand Wedding has started and we haven't seen you at the entrance yet. Please come soon and keep your QR pass ready at the gate.\n\nReference: ${s.reference}\nOpen your pass: ${base}/my-pass?ref=${encodeURIComponent(s.reference)}`;
+    Linking.openURL(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`).catch(() => setMsg("Couldn't open WhatsApp on this device."));
+  }
   const needle = q.trim().toLowerCase();
   const match = (s: Student) => !needle || [s.full_name, s.reference, s.mobile, s.batch, s.faculty_name].some((v) => v?.toLowerCase().includes(needle));
 
@@ -58,7 +69,7 @@ export default function Absent() {
         </Pressable>
         <Eyebrow>FOLLOW UP</Eyebrow>
         <H1>Not arrived yet</H1>
-        <Text style={styles.sub}>Approved students who haven&apos;t checked in. Tap a number to call. Pull down to refresh.</Text>
+        <Text style={styles.sub}>Approved students who haven&apos;t checked in. Tap a number to call or send a WhatsApp reminder. Pull down to refresh.</Text>
         {user?.role === "super_admin" && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll} contentContainerStyle={styles.chipRow}>
             {[{ id: "", name: "All branches" }, ...branches].map((b) => (
@@ -107,9 +118,14 @@ export default function Absent() {
                           <Text style={styles.ref}>{s.reference}</Text>
                         </View>
                         <Text style={styles.meta}>{s.batch}{s.batch_no ? ` • No. ${s.batch_no}` : ""}{s.faculty_name ? ` • ${s.faculty_name}` : ""}</Text>
-                        <Pressable testID={`absent-call-${s.reference}`} onPress={() => Linking.openURL(`tel:${s.mobile}`)} style={styles.call}>
-                          <Text style={styles.callTxt}>📞 {s.mobile}</Text>
-                        </Pressable>
+                        <View style={styles.actions}>
+                          <Pressable testID={`absent-call-${s.reference}`} accessibilityRole="button" onPress={() => Linking.openURL(`tel:${s.mobile}`)} style={styles.call}>
+                            <Text style={styles.callTxt}>📞 {s.mobile}</Text>
+                          </Pressable>
+                          <Pressable testID={`absent-wa-${s.reference}`} accessibilityRole="button" onPress={() => sendReminder(s, g.branch_name)} style={styles.wa}>
+                            <Text style={styles.waTxt}>WhatsApp reminder</Text>
+                          </Pressable>
+                        </View>
                       </View>
                     </Card>
                   ))}
@@ -144,6 +160,10 @@ const styles = StyleSheet.create({
   ref: { fontFamily: fonts.textMed, fontSize: 12, color: colors.muted },
   meta: { color: colors.muted, fontSize: 12, marginTop: 4, fontFamily: fonts.text },
   call: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" },
+  actions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginTop: 4 },
+  // WhatsApp brand green stays the same in every theme.
+  wa: { minHeight: 44, paddingHorizontal: 16, borderRadius: 999, backgroundColor: "#075E54", justifyContent: "center" },
+  waTxt: { color: "#FFFFFF", fontFamily: fonts.textBold, fontSize: 13 },
   callTxt: { color: colors.goldText, fontFamily: fonts.textBold, fontSize: 14 },
   note: { color: colors.muted, fontSize: 12, textAlign: "center", marginVertical: spacing.md, fontFamily: fonts.text },
   err: { color: colors.error, textAlign: "center", marginBottom: spacing.md, fontFamily: fonts.textMed },
