@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Platform } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Platform, Linking } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { api } from "@/src/api";
+import { api, getPublicUrl } from "@/src/api";
 import { colors, fonts, spacing } from "@/src/theme";
 import { QRPassCard } from "@/src/components/qr-pass";
 import { GoldButton } from "@/src/components/ui";
@@ -55,6 +55,20 @@ export default function PassScreen() {
             style={{ marginTop: spacing.xl, alignSelf: "center", width: "100%", maxWidth: 380 }}
           />
           {saveErr ? <Text style={styles.err} testID="pass-save-error">{saveErr}</Text> : null}
+          <Pressable
+            testID="pass-whatsapp-btn"
+            accessibilityRole="button"
+            onPress={() => {
+              // Shares the reference + retrieve link only; the QR token never leaves this device.
+              const base = Platform.OS === "web" && typeof window !== "undefined" ? window.location.origin : getPublicUrl();
+              const link = `${base}/my-pass?ref=${encodeURIComponent(data.reference)}`;
+              const msg = `🎉 I'm registered for OLAM 3.0 – The Grand Wedding!\n\nName: ${data.full_name}\nBranch: ${data.branch_name}\nReference: ${data.reference}\n\nOpen my pass (enter the registered email): ${link}`;
+              Linking.openURL(`https://wa.me/?text=${encodeURIComponent(msg)}`).catch(() => setSaveErr("Couldn't open WhatsApp on this device."));
+            }}
+            style={styles.wa}
+          >
+            <Text style={styles.waTxt}>Share on WhatsApp</Text>
+          </Pressable>
           <Text style={styles.footer}>Save or print it so you can show it even without internet. Each pass admits one guest, one time.</Text>
         </View>
       )}
@@ -67,4 +81,7 @@ const styles = StyleSheet.create({
   back: { color: "#FFFFFF", marginBottom: spacing.md, fontFamily: fonts.textMed, fontSize: 14 },
   err: { color: "#FFFFFF", backgroundColor: colors.error, padding: spacing.md, borderRadius: 12, overflow: "hidden", textAlign: "center", marginTop: spacing["3xl"], fontFamily: fonts.textMed },
   footer: { color: "#FFFFFF", opacity: 0.85, fontSize: 12, textAlign: "center", marginTop: spacing.lg, fontFamily: fonts.text, lineHeight: 18 },
+  // WhatsApp brand green stays the same in every theme.
+  wa: { marginTop: spacing.md, alignSelf: "center", width: "100%", maxWidth: 380, height: 52, borderRadius: 999, backgroundColor: "#128C7E", alignItems: "center", justifyContent: "center" },
+  waTxt: { color: "#FFFFFF", fontFamily: fonts.textBold, fontSize: 15 },
 });

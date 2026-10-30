@@ -78,3 +78,6 @@ Online student registration, branch coordinator approval, secure QR pass, duplic
 - Laptop layout: staff screens centred (max 1120px) on navy; dashboard stats in one row, registrations in 2 columns (>=900px). Phones unchanged.
 - Installable web app: public/manifest.json, icons (public/icon-*.png, apple-touch-icon), +html.tsx meta; "Add to home screen" button on landing (Android prompt / iPhone instructions). New OLAM app icon/favicon.
 - Scanner camera box max 600px; works in phone browser over HTTPS.
+
+## Iteration 18
+- Pass page: "Share on WhatsApp" (wa.me) shares name, branch, reference + /my-pass?ref= link (QR token never shared).

@@ -1,0 +1,27 @@
+{
+  "summary": "Frontend-only test (390x844) of the WhatsApp Pass Sharing feature. Created + approved TEST registration OLM-7A21CC via API (qa-admin). /my-pass?ref=OLM-7A21CC pre-filled the reference; entering the email -> lookup -> View pass took me to /pass?ref=OLM-7A21CC, and the token is not in the URL. The QR card and the Print / Save as PDF button render. The green (#25D366) 'Share on WhatsApp' button (pass-whatsapp-btn, role=button, 358x52) sits below the PDF button. Clicking it called window.open with https://wa.me/?text=... The decoded text contains the name, branch (KALOOR), reference and the link https://olam-wedding-pass--4hk91vsk.preview.emergentagent.com/my-pass?ref=OLM-7A21CC, and does NOT contain the QR pass token. All checks passed. Test data cleaned up.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "pass", "issues": ["White text on WhatsApp green #25D366 has a contrast ratio of about 2:1, below WCAG AA 4.5:1. This is acceptable as a brand colour but could use a darker green (#128C7E / #075E54) or dark text for readability. Minor."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/setup_iter18_ui.py"],
+  "action_items": [
+    "Optional: in pass.tsx, add .catch() to Linking.openURL(...) (line 66) to avoid an unhandled promise rejection on devices that cannot open the URL",
+    "Optional: improve the contrast of the WhatsApp button text"
+  ],
+  "critical_code_review_comments": [
+    "pass.tsx:66 Linking.openURL is not awaited and has no error handling. If it rejects, the error is unhandled and the user gets no feedback.",
+    "pass.tsx:63 on native, the link base uses getPublicUrl() (the backend URL). This works because frontend and backend share a domain in this deployment, but it should be a dedicated public app URL in production."
+  ],
+  "updated_files": ["/app/backend/tests/setup_iter18_ui.py (new setup helper)"],
+  "success_rate": {"backend": "N/A", "frontend": "100%"},
+  "seed_data_creation": "One TEST registration (OLM-7A21CC), approved, then removed with cleanup_test_data.py",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "react-native-web Linking.openURL uses window.open, so stub window.open via add_init_script to capture the wa.me URL. Use setup_iter18_ui.py to create an approved registration and cleanup_test_data.py afterwards."
+}
